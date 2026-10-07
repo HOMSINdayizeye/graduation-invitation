@@ -1,26 +1,17 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 
-function Router() {
-  // Home resolves every path itself (invite, created, admin, create, view).
-  return (
-    <Switch>
-      <Route path={"/:rest*"} component={Home} />
-    </Switch>
-  );
-}
-
+// Home resolves every path itself with useRoute (invite, created, admin, create, view).
 function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider defaultTheme="light">
         <TooltipProvider>
           <Toaster />
-          <Router />
+          <Home />
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>

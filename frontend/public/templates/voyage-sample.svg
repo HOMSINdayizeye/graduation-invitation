@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="Sample graduate photo">
+  <defs>
+    <clipPath id="c"><circle cx="100" cy="100" r="100"/></clipPath>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#dfe9f5"/>
+      <stop offset="1" stop-color="#f6e7d6"/>
+    </linearGradient>
+  </defs>
+  <g clip-path="url(#c)">
+    <rect width="200" height="200" fill="url(#sky)"/>
+    <circle cx="150" cy="52" r="26" fill="#f08a3c" opacity=".85"/>
+    <path d="M-10 150 Q60 118 120 146 T215 140 V210 H-10Z" fill="#1f3c68"/>
+    <path d="M40 210 Q100 120 160 210Z" fill="#1f3c68"/>
+    <path d="M62 210 Q100 150 138 210Z" fill="#f08a3c"/>
+    <circle cx="100" cy="96" r="30" fill="#c98e63"/>
+    <path d="M58 86 L100 66 L142 86 L100 104Z" fill="#1f3c68"/>
+    <path d="M100 104 V128" stroke="#f08a3c" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="100" cy="130" r="4" fill="#f08a3c"/>
+  </g>
+</svg>
