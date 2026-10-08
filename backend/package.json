@@ -1,7 +1,15 @@
 {
   "name": "graduation-invitation-backend",
   "version": "1.0.0",
+  "private": true,
+  "description": "GradInvite API: Express + tRPC on MongoDB, standalone Node service",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "imports": {
+    "#shared/*": "./shared/*"
+  },
   "scripts": {
     "dev": "tsx watch server/_core/index.js",
     "build": "node esbuild.config.js",

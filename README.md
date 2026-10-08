@@ -4,8 +4,10 @@ Digital graduation invitations: pick a template, add your details and guests, sh
 
 ## Project layout
 
-- `frontend/` Vite + React app (port 5173 in development)
-- `backend/` Express + tRPC API (port 3000); in production it can also serve the built frontend from `frontend/dist`
+Two independent apps in one repository:
+
+- `backend/` standalone Node service (Express + tRPC + MongoDB) with its own `package.json` and `package-lock.json`. Install and run it with npm from inside the folder. Shared constants and template defaults live in `backend/shared/`.
+- `frontend/` Vite + React app. The root `pnpm-workspace.yaml` covers only the frontend; `pnpm dev` at the root starts it on 5173 and proxies `/api` to the backend on 3000.
 
 ## Environment
 
@@ -48,21 +50,24 @@ Transactional email goes through Brevo's REST API (`backend/server/_core/mail.js
 
 ## Deploying
 
-**Option A, one server (simplest):** deploy the repo root as a Node web service (Render, Railway, a VPS). Build with `pnpm install && pnpm build`, start with `pnpm start`, set the backend env keys, and leave `CORS_ORIGIN` and `VITE_API_URL` empty. The backend serves the built frontend from `frontend/dist`.
+- **Backend on Render**: Web Service with Root Directory `backend`, build `npm install && npm run build`, start `npm start`. Node 22 comes from `backend/.node-version`. Set the backend env keys plus `CORS_ORIGIN=https://<frontend-domain>`.
+- **Frontend on Vercel**: Root Directory `frontend`, Vite preset (output `dist`), env `VITE_API_URL=https://<backend>.onrender.com`. `frontend/vercel.json` rewrites every path to `index.html`.
+- **Single server instead**: build the frontend, then start the backend with `CORS_ORIGIN` and `VITE_API_URL` empty; it serves `frontend/dist` itself.
 
-**Option B, Vercel frontend + Render backend:**
-
-1. Render web service, root directory empty, build `pnpm install && pnpm --filter graduation-invitation-backend build`, start `pnpm start`, backend env keys plus `CORS_ORIGIN=https://<your-app>.vercel.app`.
-2. Vercel project, root directory `frontend`, framework Vite (build `pnpm build`, output `dist`), env `VITE_API_URL=https://<your-backend>.onrender.com`. `frontend/vercel.json` rewrites every path to `index.html` so `/login` and `/admin` work on refresh.
-
-In both cases open MongoDB Atlas network access to `0.0.0.0/0`, since these hosts have no fixed outbound IP.
+Open MongoDB Atlas network access to `0.0.0.0/0`, since these hosts have no fixed outbound IP.
 
 ## Commands
 
 ```bash
-pnpm install:all   # install root, frontend and backend dependencies
-pnpm dev           # frontend on 5173 + backend on 3000
-pnpm build         # build frontend into frontend/dist and bundle the backend into backend/dist
-pnpm start         # run the production server (serves API + built frontend)
-pnpm check         # TypeScript check
+# backend (run inside backend/)
+npm install
+npm run dev      # API on 3000 with reload
+npm run build    # bundle to backend/dist
+npm start        # run the bundle
+
+# frontend (from the repo root)
+pnpm install
+pnpm dev         # Vite on 5173
+pnpm build       # build to frontend/dist
+pnpm check       # TypeScript check
 ```

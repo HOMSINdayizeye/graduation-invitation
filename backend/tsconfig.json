@@ -6,11 +6,15 @@
     "allowJs": true,
     "checkJs": false,
     "noEmit": true,
-    "skipLibCheck": true,
-    "paths": {
-      "@shared/*": ["./shared/*"]
-    }
+    "skipLibCheck": true
   },
-  "include": ["server", "shared", "*.js"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "server",
+    "shared",
+    "*.js"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }

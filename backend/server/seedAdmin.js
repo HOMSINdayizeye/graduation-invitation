@@ -1,7 +1,7 @@
 import bcrypt from "bcrypt";
 import { ENV } from "./_core/env.js";
 import { isDbConnected } from "./db.js";
-import { DEFAULT_TEMPLATES } from "@shared/templates.js";
+import { DEFAULT_TEMPLATES } from "#shared/templates.js";
 import { Template } from "./models/template.js";
 import { User } from "./models/user.js";
 

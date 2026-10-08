@@ -1,6 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { DEFAULT_TEMPLATES } from "@shared/templates.js";
+import { DEFAULT_TEMPLATES } from "#shared/templates.js";
 import { adminProcedure, publicProcedure, router } from "./_core/trpc.js";
 import { isDbConnected } from "./db.js";
 import { Template } from "./models/template.js";

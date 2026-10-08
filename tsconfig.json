@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
@@ -13,11 +17,32 @@
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "paths": {
-      "@/*": ["./frontend/src/*"],
-      "@shared/*": ["./backend/shared/*"],
-      "@assets/*": ["./frontend/attached_assets/*"]
+      "@/*": [
+        "./frontend/src/*"
+      ],
+      "@shared/*": [
+        "./backend/shared/*"
+      ],
+      "@assets/*": [
+        "./frontend/attached_assets/*"
+      ],
+      "@trpc/server": [
+        "./node_modules/@trpc/server"
+      ],
+      "@trpc/server/*": [
+        "./node_modules/@trpc/server/*"
+      ],
+      "#shared/*": [
+        "./backend/shared/*"
+      ]
     }
   },
-  "include": ["frontend/src", "backend/shared"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "frontend/src",
+    "backend/shared"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }

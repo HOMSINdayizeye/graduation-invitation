@@ -7,9 +7,6 @@ await build({
   bundle: true,
   format: "esm",
   outdir: "dist",
-  alias: {
-    "@shared": "./shared",
-  },
   // The bundle is always the production build, so no NODE_ENV prefix is needed on Windows.
   define: { "process.env.NODE_ENV": '"production"' },
   mainFields: ["module", "main"],

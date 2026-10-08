@@ -1,7 +1,5 @@
 packages:
   - frontend
-  - backend
 
 onlyBuiltDependencies:
-  - bcrypt
   - esbuild
