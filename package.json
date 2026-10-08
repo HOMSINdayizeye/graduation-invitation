@@ -9,5 +9,8 @@
     "start": "pnpm --filter graduation-invitation-backend start",
     "install:all": "pnpm install && pnpm --filter graduation-invitation-frontend install && pnpm --filter graduation-invitation-backend install"
   },
-  "packageManager": "pnpm@10.4.1"
+  "packageManager": "pnpm@10.4.1",
+  "engines": {
+    "node": ">=22"
+  }
 }
