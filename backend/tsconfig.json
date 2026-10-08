@@ -7,11 +7,10 @@
     "checkJs": false,
     "noEmit": true,
     "skipLibCheck": true,
-    "baseUrl": ".",
     "paths": {
-      "@shared/*": ["shared/*"]
+      "@shared/*": ["./shared/*"]
     }
   },
-  "include": ["server", "shared", "drizzle", "*.js"],
+  "include": ["server", "shared", "*.js"],
   "exclude": ["node_modules", "dist"]
 }

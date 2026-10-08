@@ -8,6 +8,7 @@ import {
   Clipboard,
   ExternalLink,
   Gift,
+  GraduationCap,
   ImagePlus,
   Link2,
   LockKeyhole,
@@ -30,6 +31,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { isValidRwandaMobile } from "@shared/gradinvite";
+import { useAuth } from "@/_core/hooks/useAuth";
+import Login from "./Login";
 
 const templates = [
   {
@@ -38,8 +41,8 @@ const templates = [
     subtitle: "Warm, editorial and full of character",
     className: "template-terracotta",
     accent: "#d76b4f",
-    monogram: "A",
-    sampleName: "Aline Mukamana",
+    monogram: "H",
+    sampleName: "Homsi NDAYIZEYE",
   },
   {
     id: "midnight",
@@ -48,7 +51,7 @@ const templates = [
     className: "template-midnight",
     accent: "#96c7c0",
     monogram: "J",
-    sampleName: "Jean Claude Niyonzima",
+    sampleName: "Denis  Niyonzima",
   },
   {
     id: "garden",
@@ -57,7 +60,7 @@ const templates = [
     className: "template-garden",
     accent: "#799c70",
     monogram: "M",
-    sampleName: "Mireille Uwase",
+    sampleName: "Iradukunda Florence",
   },
   {
     id: "voyage",
@@ -66,10 +69,50 @@ const templates = [
     className: "template-voyage",
     accent: "#f08a3c",
     monogram: "D",
-    sampleName: "David Iradukunda",
+    sampleName: "Osuald Iradukunda",
     // Shown in the circle on the template card; the real invitation uses the uploaded photo.
     sampleImage: "/templates/voyage-sample.svg",
   },
+  {
+    id: "classic",
+    name: "Classic Celebration",
+    subtitle: "A timeless, elegant invitation",
+    className: "template-classic",
+    accent: "#8b4513",
+    monogram: "F",
+    sampleName: "Frank Murenzi",
+  },
+  {
+    id: "sunset",
+    name: "Sunset Serenade",
+    subtitle: "Warm, romantic and intimate",
+    className: "template-sunset",
+    accent: "#ff6b35",
+    monogram: "S",
+    sampleName: "Serge SINGIZWA",
+    sampleImage: "/templates/voyage-sample.svg",
+  },
+  {
+    id: "modern",
+    name: "Modern Minimal",
+    subtitle: "Clean, contemporary and versatile",
+    className: "template-modern",
+    accent: "#4a90e2",
+    monogram: "M",
+    sampleName: "TUYISENGE Monchel",
+    sampleImage: "/templates/voyage-sample.svg",
+  },
+  {
+  id: "playful",
+    name: "Playful Pop",
+    subtitle: "Fun, colorful and cheerful",
+    className: "template-playful",
+    accent: "#f5a623",
+    monogram: "O",
+    sampleName: "Obed Ishimwe",
+    sampleImage: "/templates/voyage-sample.svg",
+  }
+
 ];
 
 // Every invitee gets a unique id so a guest link can be matched exactly.
@@ -120,6 +163,7 @@ function TemplateMiniCard({ template, selected, onClick }: { template: typeof te
 function PublicNav({ onCreate }: { onCreate: () => void }) {
   const [open, setOpen] = useState(false);
   const [, navigate] = useLocation();
+  const { user, logout } = useAuth();
   return (
     <header className="site-nav">
       <Link href="/" className="brand-lockup">
@@ -131,39 +175,84 @@ function PublicNav({ onCreate }: { onCreate: () => void }) {
         <a href="#templates" onClick={() => setOpen(false)}>Templates</a>
         <a href="#how-it-works" onClick={() => setOpen(false)}>How it works</a>
         <button className="nav-text-button" onClick={() => { navigate("/view"); setOpen(false); }}>View my creations</button>
+        {user ? <button className="nav-text-button" onClick={() => { logout(); setOpen(false); }}>Sign out ({user.name.split(" ")[0]})</button> : <button className="nav-text-button" onClick={() => { navigate("/login"); setOpen(false); }}>Sign in</button>}
         <Button className="nav-cta" onClick={() => { onCreate(); setOpen(false); }}>Create invitation <ArrowRight size={15} /></Button>
       </nav>
     </header>
   );
 }
 
+// White snowy edge with drips along the top of the hero.
+function SnowTop() {
+  return (
+    <svg className="snow-top" viewBox="0 0 1440 140" preserveAspectRatio="none" aria-hidden="true">
+      <path fill="#fff" d="M0 0h1440v38c-30 18-58 40-90 36-36-4-40-50-80-46-40 4-44 60-84 56-36-4-46-46-86-40-40 6-46 70-96 64-44-6-50-60-100-56-50 4-60 42-104 44-50 2-66-36-112-40-52-4-70 48-120 50-48 2-60-36-100-40-44-4-64 30-110 34-48 4-58-30-100-32-44-2-54 34-100 36-46 2-56-32-98-32-40 0-50 20-70 20V0z" />
+      <circle cx="310" cy="112" r="9" fill="#fff" /><circle cx="760" cy="118" r="7" fill="#fff" /><circle cx="1140" cy="110" r="8" fill="#fff" />
+    </svg>
+  );
+}
+
+// Soft pine silhouettes along the bottom corners, as in the reference banner.
+function WinterTrees() {
+  const tree = (x: number, h: number) => <path key={`${x}-${h}`} d={`M${x} 160 L${x - h * 0.45} 160 L${x} ${160 - h} L${x + h * 0.45} 160 Z`} />;
+  return (
+    <svg className="winter-trees" viewBox="0 0 1440 160" preserveAspectRatio="none" aria-hidden="true">
+      <g fill="#c9bdf2">{tree(70, 110)}{tree(150, 150)}{tree(240, 100)}{tree(1230, 120)}{tree(1320, 155)}{tree(1400, 105)}</g>
+      <g fill="#bfb2ee">{tree(110, 80)}{tree(200, 70)}{tree(1280, 85)}{tree(1370, 70)}</g>
+    </svg>
+  );
+}
+
+// Illustrated storefront, chart and control cards; the person image is supplied by the project owner at /hero-person.png.
+function HeroWinterArt() {
+  const [hasPerson, setHasPerson] = useState(true);
+  return (
+    <div className="hero-winter-art" aria-hidden="true">
+      <span className="flake flake-a">❄</span><span className="flake flake-b">❄</span><span className="flake flake-c">❄</span>
+      <div className="wc-store">
+        <div className="wc-store-bar"><i /><i /><i /></div>
+        <div className="wc-awning">{Array.from({ length: 7 }).map((_, i) => <span key={i} />)}</div>
+        <div className="wc-store-body"><div className="wc-chart"><svg viewBox="0 0 160 70" preserveAspectRatio="none"><path d="M0 60 L30 48 L60 54 L95 28 L125 36 L160 8 V70 H0Z" fill="#f4b23c" /><path d="M0 60 L30 48 L60 54 L95 28 L125 36 L160 8" fill="none" stroke="#5b43c4" strokeWidth="3" /></svg></div></div>
+      </div>
+      <div className="wc-badge"><GraduationCap size={28} /></div>
+      <div className="wc-card wc-card-lines"><span className="wc-line wide" /><span className="wc-line" /><span className="wc-line short" /></div>
+      <div className="wc-card wc-card-download"><ArrowRight size={16} className="wc-down" /></div>
+      <div className="wc-card wc-card-stars"><div className="wc-avatar"><Users size={14} /></div><div><span className="wc-dots" /><span className="wc-dots red" /></div></div>
+      <div className="wc-card wc-card-controls">
+        <div className="wc-slider"><span /></div>
+        <div className="wc-tiles"><div className="wc-tile"><ArrowRight size={14} className="wc-down" /></div><div className="wc-tile"><ArrowRight size={14} className="wc-down" /></div></div>
+      </div>
+      {hasPerson ? (
+        <img className="hero-winter-person" src="/hero-person.jpg" alt="" onError={() => setHasPerson(false)} />
+      ) : (
+        <div className="hero-winter-person placeholder"><span>Add your image at<br />public/hero-person.jpg</span></div>
+      )}
+    </div>
+  );
+}
+
 function HomePage({ onCreate }: { onCreate: (templateId?: string) => void }) {
   return (
     <div className="public-page">
-      <PublicNav onCreate={() => onCreate()} />
-      <main>
-        <section className="hero-section">
-          <div className="hero-copy">
-            <Badge className="eyebrow"><span className="eyebrow-dot" /> MADE FOR THE MOMENT</Badge>
-            <h1>Give your graduation<br /><em>a beautiful beginning.</em></h1>
-            <p className="hero-lead">Create a digital invitation that feels personal, looks considered and gives every guest the details they need.</p>
-            <div className="hero-actions">
-              <Button className="primary-button" onClick={() => onCreate()}>Choose a template <ArrowRight size={16} /></Button>
-              <a className="text-link" href="#how-it-works">See how it works <span>↘</span></a>
+      <div className="hero-winter">
+        <SnowTop />
+        <PublicNav onCreate={() => onCreate()} />
+        <section className="hero-winter-inner">
+          <div className="hero-winter-copy">
+            <h1>Graduation<br />Invites 2026<br />Edition</h1>
+            <p className="hero-winter-sub">Complete toolkit for<br /><strong>Your Big Celebration</strong></p>
+            <div className="hero-winter-actions">
+              <Button className="hero-winter-cta" onClick={() => onCreate()}>Choose a template <ArrowRight size={16} /></Button>
+              <a className="hero-winter-link" href="#how-it-works">See how it works</a>
             </div>
-            <div className="hero-trust"><span><ShieldCheck size={15} /> No password needed</span><span><Sparkles size={15} /> Ready to share</span></div>
+            <div className="hero-winter-trust"><span><ShieldCheck size={14} /> No password needed</span><span><Sparkles size={14} /> Ready to share</span></div>
+            <span className="hero-winter-site">{typeof window === "undefined" ? "" : window.location.hostname}</span>
           </div>
-          <div className="hero-art" aria-label="Sample graduation invitation">
-            <div className="art-orbit orbit-one" /><div className="art-orbit orbit-two" />
-            <div className="hero-card template-terracotta">
-              <div className="hero-card-top"><span>GRADUATION</span><span>12.12.26</span></div>
-              <div className="hero-card-content"><div className="hero-card-kicker">A NEW CHAPTER</div><div className="hero-card-name">Aline<br /><em>Mukamana</em></div><div className="hero-card-line" /><p>Join me as I celebrate the close of one chapter and the beginning of another.</p><div className="hero-card-date"><CalendarDays size={14} /> Saturday, 12 December 2026</div></div>
-              <div className="hero-card-footer">Rwanda  ·  Kigali</div>
-            </div>
-            <div className="art-note note-one"><QrCode size={17} /><span>Share by QR<br />or link</span></div>
-            <div className="art-note note-two"><span className="note-star">✦</span><span>Made for<br />your people</span></div>
-          </div>
+          <HeroWinterArt />
         </section>
+        <WinterTrees />
+      </div>
+      <main>
 
         <section className="feature-strip"><div><span className="feature-number">01</span><strong>Choose your style</strong><span>Start with a design that feels like you.</span></div><div><span className="feature-number">02</span><strong>Make it yours</strong><span>Add your story, dates and places.</span></div><div><span className="feature-number">03</span><strong>Send with ease</strong><span>Every guest gets their own invitation.</span></div></section>
 
@@ -282,6 +371,15 @@ function AdminPage() {
   return <div className="admin-page"><aside className="admin-sidebar"><Link href="/" className="brand-lockup"><span className="brand-mark"><Sparkles size={15} /></span><span>grad<span>invite</span></span></Link><div className="admin-profile"><div className="admin-avatar">A</div><div><strong>Admin panel</strong><span>Invitation studio</span></div></div><nav><a className="active"><Sparkles size={16} /> Overview</a><a><Gift size={16} /> Templates <span>{templates.length}</span></a><a><LockKeyhole size={16} /> OTP periods <span>1</span></a><a><Users size={16} /> Invitee requests</a><a><MessageCircle size={16} /> Feedback <span>{feedback.length}</span></a></nav><button className="sidebar-bottom" onClick={() => navigate("/")}><ExternalLink size={15} /> View public site</button></aside><main className="admin-main"><div className="admin-header"><div><span className="admin-kicker">{todayLabel}</span><h1>{greeting}, admin.</h1><p>Here’s what’s happening with your invitation studio.</p></div><div className="admin-actions"><Button variant="outline" onClick={() => navigate("/create")}><Sparkles size={15} /> Preview creator flow</Button></div></div><div className="metric-grid"><div className="metric-card"><span>Active OTP period</span><strong>01</strong><small>Configured and available</small><div className="metric-accent green" /></div><div className="metric-card"><span>Invitations created</span><strong>{campaigns.length}</strong><small>Across all campaigns</small><div className="metric-accent terracotta" /></div><div className="metric-card"><span>Total invitees</span><strong>{totalInvitees}</strong><small>Individual links generated</small><div className="metric-accent gold" /></div><div className="metric-card"><span>Average feedback</span><strong>{average}<small>{average !== "—" && " / 5"}</small></strong><small>{feedback.length ? `${feedback.length} response${feedback.length === 1 ? "" : "s"}` : "No responses yet"}</small><div className="metric-accent blue" /></div></div><div className="admin-grid"><section className="admin-card active-otp"><div className="admin-card-head"><div><span className="card-eyebrow">OTP CONTROL</span><h2>Current access period</h2></div><Badge className="live-badge"><span /> LIVE</Badge></div><div className="otp-control"><div className="otp-code">20<span>26</span></div><div><strong>Creation access is open</strong><p>Anyone can request a code by email until <b>31 October 2026</b>.</p></div></div><div className="otp-progress"><div><span>Usage this period</span><strong>38 / unlimited</strong></div><div className="progress-track"><span style={{ width: "34%" }} /></div></div><Button className="secondary-button">Configure next period <ArrowRight size={15} /></Button></section><section className="admin-card"><div className="admin-card-head"><div><span className="card-eyebrow">TEMPLATE COLLECTION</span><h2>Available styles</h2></div><button className="small-link">Manage <ArrowRight size={14} /></button></div><div className="admin-template-list">{templates.map((item) => <div key={item.id} className="admin-template"><div className={`admin-template-thumb ${item.className}`}><span>{item.monogram}</span></div><div><strong>{item.name}</strong><span>Active template</span></div><Check size={15} /></div>)}</div></section></div><section className="admin-card feedback-card"><div className="admin-card-head"><div><span className="card-eyebrow">LATEST FEEDBACK</span><h2>What guests are saying</h2></div><button className="small-link">View all <ArrowRight size={14} /></button></div>{feedback.length === 0 ? <div className="empty-feedback"><MessageCircle size={20} /><span>Feedback from guests will appear here.</span></div> : <div className="feedback-list">{feedback.slice(0, 3).map((item, index) => <div className="feedback-item" key={index}><div className="feedback-stars">{Array.from({ length: item.rating }).map((_, i) => <Star key={i} size={13} fill="currentColor" />)}</div><p>“{item.message}”</p><span>Verified phone · {item.phone}</span></div>)}</div>}</section></main></div>;
 }
 
+// Only signed-in administrators may open the admin panel; everyone else is sent to sign in.
+function AdminGate({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth({ redirectOnUnauthenticated: true });
+  if (loading) return <div className="empty-screen"><Sparkles size={25} /><h2>Checking your access</h2></div>;
+  if (!user) return null;
+  if (user.role !== "admin") return <EmptyState title="This area is for administrators only." action={() => window.location.assign("/")} />;
+  return <>{children}</>;
+}
+
 function EmptyState({ title, action }: { title: string; action: () => void }) { return <div className="empty-screen"><Sparkles size={25} /><h2>{title}</h2><Button className="primary-button" onClick={action}>Go home <ArrowRight size={16} /></Button></div>; }
 
 export default function Home() {
@@ -290,12 +388,14 @@ export default function Home() {
   const [matchAdmin] = useRoute("/admin");
   const [matchCreate] = useRoute("/create");
   const [matchView] = useRoute("/view");
+  const [matchLogin] = useRoute("/login");
   const [location, navigate] = useLocation();
   const initialTemplate = new URLSearchParams(window.location.search).get("template") || undefined;
   useEffect(() => { document.title = location.startsWith("/invite") ? "You’re invited · GradInvite" : "GradInvite — Graduation invitations, made personal"; }, [location]);
   if (matchInvite && paramsInvite?.id) return <PublicInvite inviteId={paramsInvite.id} />;
   if (matchCreated && paramsCreated?.id) return <CreatedPage campaignId={paramsCreated.id} />;
-  if (matchAdmin) return <AdminPage />;
+  if (matchLogin) return <Login />;
+  if (matchAdmin) return <AdminGate><AdminPage /></AdminGate>;
   if (matchCreate) return <CreatorPage initialTemplate={initialTemplate} />;
   if (matchView) return <ViewCreations />;
   return <HomePage onCreate={(templateId) => navigate(templateId ? `/create?template=${templateId}` : "/create")} />;

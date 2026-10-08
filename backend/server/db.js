@@ -1,91 +1,31 @@
-import { eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema.js";
-import { ENV } from './_core/env.js';
+import dns from "node:dns";
+import mongoose from "mongoose";
+import { ENV } from "./_core/env.js";
 
-let _db = null;
+let connected = false;
 
-// Lazily create the drizzle instance so local tooling can run without a DB.
-export async function getDb() {
-  if (!_db && process.env.DATABASE_URL) {
-    try {
-      _db = drizzle(process.env.DATABASE_URL);
-    } catch (error) {
-      console.warn("[Database] Failed to connect:", error);
-      _db = null;
-    }
-  }
-  return _db;
+export function isDbConnected() {
+  return connected && mongoose.connection.readyState === 1;
 }
 
-export async function upsertUser(user) {
-  if (!user.openId) {
-    throw new Error("User openId is required for upsert");
+// Connects once at startup; the server still runs without a database so the public pages keep working.
+export async function connectDb() {
+  if (!ENV.mongoUri) {
+    console.warn("[Database] MONGODB_URI is not set. Sign-in and accounts are disabled until it is.");
+    return false;
   }
-
-  const db = await getDb();
-  if (!db) {
-    console.warn("[Database] Cannot upsert user: database not available");
-    return;
-  }
-
+  // Atlas SRV records need a resolver that handles them; the OS default often does not (same fix as cok_systems).
+  if (ENV.mongoUri.startsWith("mongodb+srv://")) dns.setServers(["8.8.8.8", "1.1.1.1"]);
   try {
-    const values = {
-      openId: user.openId,
-    };
-    const updateSet = {};
-
-    const textFields = ["name", "email", "loginMethod"];
-
-    const assignNullable = (field) => {
-      const value = user[field];
-      if (value === undefined) return;
-      const normalized = value ?? null;
-      values[field] = normalized;
-      updateSet[field] = normalized;
-    };
-
-    textFields.forEach(assignNullable);
-
-    if (user.lastSignedIn !== undefined) {
-      values.lastSignedIn = user.lastSignedIn;
-      updateSet.lastSignedIn = user.lastSignedIn;
-    }
-    if (user.role !== undefined) {
-      values.role = user.role;
-      updateSet.role = user.role;
-    } else if (user.openId === ENV.ownerOpenId) {
-      values.role = 'admin';
-      updateSet.role = 'admin';
-    }
-
-    if (!values.lastSignedIn) {
-      values.lastSignedIn = new Date();
-    }
-
-    if (Object.keys(updateSet).length === 0) {
-      updateSet.lastSignedIn = new Date();
-    }
-
-    await db.insert(users).values(values).onDuplicateKeyUpdate({
-      set: updateSet,
+    await mongoose.connect(ENV.mongoUri, {
+      serverSelectionTimeoutMS: 10000,
+      ...(ENV.mongoDbName ? { dbName: ENV.mongoDbName } : {}),
     });
+    connected = true;
+    console.log(`[Database] Connected to MongoDB, database "${mongoose.connection.name}"`);
   } catch (error) {
-    console.error("[Database] Failed to upsert user:", error);
-    throw error;
+    connected = false;
+    console.error("[Database] Connection failed:", error.message);
   }
+  return connected;
 }
-
-export async function getUserByOpenId(openId) {
-  const db = await getDb();
-  if (!db) {
-    console.warn("[Database] Cannot get user: database not available");
-    return undefined;
-  }
-
-  const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
-
-  return result.length > 0 ? result[0] : undefined;
-}
-
-// TODO: add feature queries here as your schema grows.

@@ -12,11 +12,10 @@
     "isolatedModules": true,
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["frontend/src/*"],
-      "@shared/*": ["backend/shared/*"],
-      "@assets/*": ["frontend/attached_assets/*"]
+      "@/*": ["./frontend/src/*"],
+      "@shared/*": ["./backend/shared/*"],
+      "@assets/*": ["./frontend/attached_assets/*"]
     }
   },
   "include": ["frontend/src", "backend/shared"],

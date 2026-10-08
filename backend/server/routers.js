@@ -1,28 +1,12 @@
-import { COOKIE_NAME } from "@shared/const.js";
-import { getSessionCookieOptions } from "./_core/cookies.js";
+import { authRouter } from "./authRouter.js";
 import { systemRouter } from "./_core/systemRouter.js";
-import { publicProcedure, router } from "./_core/trpc.js";
+import { router } from "./_core/trpc.js";
 
+// Every API route lives under /api/ so the gateway can route it.
 export const appRouter = router({
-    // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
-  auth: router({
-    me: publicProcedure.query(opts => opts.ctx.user),
-    logout: publicProcedure.mutation(({ ctx }) => {
-      const cookieOptions = getSessionCookieOptions(ctx.req);
-      ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
-      return {
-        success: true,
-      };
-    }),
-  }),
-
-  // TODO: add feature routers here, e.g.
-  // todo: router({
-  //   list: protectedProcedure.query(({ ctx }) =>
-  //     db.getUserTodos(ctx.user.id)
-  //   ),
-  // }),
+  auth: authRouter,
+  // TODO: add feature routers here.
 });
 
 export const AppRouter = appRouter;
