@@ -1,4 +1,7 @@
+import { adminRouter } from "./adminRouter.js";
 import { authRouter } from "./authRouter.js";
+import { otpRouter } from "./otpRouter.js";
+import { templatesRouter } from "./templatesRouter.js";
 import { systemRouter } from "./_core/systemRouter.js";
 import { router } from "./_core/trpc.js";
 
@@ -6,7 +9,9 @@ import { router } from "./_core/trpc.js";
 export const appRouter = router({
   system: systemRouter,
   auth: authRouter,
-  // TODO: add feature routers here.
+  templates: templatesRouter,
+  otp: otpRouter,
+  admin: adminRouter,
 });
 
 export const AppRouter = appRouter;

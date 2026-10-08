@@ -4,6 +4,7 @@ import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { connectDb } from "../db.js";
+import { ensureAdminUser, ensureTemplates } from "../seedAdmin.js";
 import { appRouter } from "../routers.js";
 import { createContext } from "./context.js";
 import { serveStatic } from "./vite.js";
@@ -29,6 +30,8 @@ async function findAvailablePort(startPort = 3000) {
 
 async function startServer() {
   await connectDb();
+  await ensureAdminUser();
+  await ensureTemplates();
   const app = express();
   const server = createServer(app);
   // Configure body parser with larger size limit for file uploads

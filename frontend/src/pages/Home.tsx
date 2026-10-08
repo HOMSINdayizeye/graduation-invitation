@@ -31,94 +31,23 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { isValidRwandaMobile } from "@shared/gradinvite";
+import { DEFAULT_TEMPLATES } from "@shared/templates";
+import { trpc } from "@/lib/trpc";
+import Admin from "./Admin";
 import { useAuth } from "@/_core/hooks/useAuth";
 import Login from "./Login";
 
-const templates = [
-  {
-    id: "terracotta",
-    name: "Terracotta Toast",
-    subtitle: "Warm, editorial and full of character",
-    className: "template-terracotta",
-    accent: "#d76b4f",
-    monogram: "H",
-    sampleName: "Homsi NDAYIZEYE",
-  },
-  {
-    id: "midnight",
-    name: "Midnight Ceremony",
-    subtitle: "A polished evening invitation",
-    className: "template-midnight",
-    accent: "#96c7c0",
-    monogram: "J",
-    sampleName: "Denis  Niyonzima",
-  },
-  {
-    id: "garden",
-    name: "Garden Gathering",
-    subtitle: "Fresh, joyful and personal",
-    className: "template-garden",
-    accent: "#799c70",
-    monogram: "M",
-    sampleName: "Iradukunda Florence",
-  },
-  {
-    id: "voyage",
-    name: "Bold Horizon",
-    subtitle: "Bright, confident and modern",
-    className: "template-voyage",
-    accent: "#f08a3c",
-    monogram: "D",
-    sampleName: "Osuald Iradukunda",
-    // Shown in the circle on the template card; the real invitation uses the uploaded photo.
-    sampleImage: "/templates/voyage-sample.svg",
-  },
-  {
-    id: "classic",
-    name: "Classic Celebration",
-    subtitle: "A timeless, elegant invitation",
-    className: "template-classic",
-    accent: "#8b4513",
-    monogram: "F",
-    sampleName: "Frank Murenzi",
-  },
-  {
-    id: "sunset",
-    name: "Sunset Serenade",
-    subtitle: "Warm, romantic and intimate",
-    className: "template-sunset",
-    accent: "#ff6b35",
-    monogram: "S",
-    sampleName: "Serge SINGIZWA",
-    sampleImage: "/templates/voyage-sample.svg",
-  },
-  {
-    id: "modern",
-    name: "Modern Minimal",
-    subtitle: "Clean, contemporary and versatile",
-    className: "template-modern",
-    accent: "#4a90e2",
-    monogram: "M",
-    sampleName: "TUYISENGE Monchel",
-    sampleImage: "/templates/voyage-sample.svg",
-  },
-  {
-  id: "playful",
-    name: "Playful Pop",
-    subtitle: "Fun, colorful and cheerful",
-    className: "template-playful",
-    accent: "#f5a623",
-    monogram: "O",
-    sampleName: "Obed Ishimwe",
-    sampleImage: "/templates/voyage-sample.svg",
-  }
+type TemplateItem = (typeof DEFAULT_TEMPLATES)[number];
 
-];
+// Templates come from MongoDB (admin-editable); the built-in list is the fallback while loading or offline.
+function useTemplates(includeHidden = false): TemplateItem[] {
+  const query = trpc.templates.list.useQuery(undefined, { retry: false, staleTime: 60_000 });
+  const list = (query.data as TemplateItem[] | undefined) ?? DEFAULT_TEMPLATES;
+  return includeHidden ? list : list.filter((item) => item.active !== false);
+}
 
 // Every invitee gets a unique id so a guest link can be matched exactly.
 const createInvitee = () => ({ id: crypto.randomUUID(), name: "", phone: "" });
-
-const demoOtp = "2026";
 
 function saveLocal(key: string, value: unknown) {
   try {
@@ -147,11 +76,11 @@ function formatDate(value: string) {
   });
 }
 
-function TemplateMiniCard({ template, selected, onClick }: { template: typeof templates[number]; selected?: boolean; onClick?: () => void }) {
+function TemplateMiniCard({ template, selected, onClick }: { template: TemplateItem; selected?: boolean; onClick?: () => void }) {
   return (
     <button type="button" onClick={onClick} className={`template-mini ${template.className} ${selected ? "is-selected" : ""}`}>
       <div className="mini-topline"><span>GRADUATION</span><span>2026</span></div>
-      {"sampleImage" in template ? <img className="mini-photo" src={template.sampleImage} alt="" /> : <div className="mini-monogram">{template.monogram}</div>}
+      {template.sampleImage ? <img className="mini-photo" src={template.sampleImage} alt="" /> : <div className="mini-monogram">{template.monogram}</div>}
       <div className="mini-name">{template.sampleName}</div>
       <div className="mini-rule" style={{ backgroundColor: template.accent }} />
       <div className="mini-meta">A day worth remembering</div>
@@ -175,6 +104,7 @@ function PublicNav({ onCreate }: { onCreate: () => void }) {
         <a href="#templates" onClick={() => setOpen(false)}>Templates</a>
         <a href="#how-it-works" onClick={() => setOpen(false)}>How it works</a>
         <button className="nav-text-button" onClick={() => { navigate("/view"); setOpen(false); }}>View my creations</button>
+        {user?.role === "admin" && <Button className="nav-cta nav-dashboard" onClick={() => { navigate("/admin"); setOpen(false); }}><LockKeyhole size={14} /> Dashboard</Button>}
         {user ? <button className="nav-text-button" onClick={() => { logout(); setOpen(false); }}>Sign out ({user.name.split(" ")[0]})</button> : <button className="nav-text-button" onClick={() => { navigate("/login"); setOpen(false); }}>Sign in</button>}
         <Button className="nav-cta" onClick={() => { onCreate(); setOpen(false); }}>Create invitation <ArrowRight size={15} /></Button>
       </nav>
@@ -232,6 +162,7 @@ function HeroWinterArt() {
 }
 
 function HomePage({ onCreate }: { onCreate: (templateId?: string) => void }) {
+  const templates = useTemplates();
   return (
     <div className="public-page">
       <div className="hero-winter">
@@ -270,22 +201,34 @@ function HomePage({ onCreate }: { onCreate: (templateId?: string) => void }) {
   );
 }
 
-function OtpStep({ email, setEmail, onVerified, onBack }: { email: string; setEmail: (s: string) => void; onVerified: () => void; onBack: () => void }) {
+type OtpResult = { bypass: boolean; reason?: string; expiresInMinutes?: number };
+
+function OtpStep({ email, setEmail, templateId, onVerified, onBack }: { email: string; setEmail: (s: string) => void; templateId: string; onVerified: () => void; onBack: () => void }) {
   const [sent, setSent] = useState(false);
   const [otp, setOtp] = useState("");
   const [error, setError] = useState("");
+  const request = trpc.otp.request.useMutation({
+    onSuccess: (result) => {
+      const r = result as OtpResult;
+      if (r.bypass) { toast.info(r.reason); onVerified(); return; }
+      setSent(true); setOtp(""); toast.success(`Code sent to ${email}`, { description: `It expires in ${r.expiresInMinutes} minutes.` });
+    },
+    onError: (e) => setError(e.message),
+  });
+  const verify = trpc.otp.verify.useMutation({ onSuccess: () => onVerified(), onError: (e) => setError(e.message) });
+  const busy = request.isPending || verify.isPending;
   const requestOtp = () => {
     if (!email.includes("@")) { setError("Enter a valid email address."); return; }
-    setError(""); setSent(true); toast.success("Your one-time code is ready", { description: `Demo code: ${demoOtp}` });
+    setError(""); request.mutate({ email, templateId, purpose: "create" });
   };
-  const verify = () => {
-    if (otp !== demoOtp) { setError("That code is not correct. Try the demo code shown in the notification."); return; }
-    onVerified();
+  const verifyOtp = () => {
+    if (otp.length !== 6) { setError("Enter the 6-digit code from your email."); return; }
+    setError(""); verify.mutate({ email, code: otp });
   };
-  return <div className="auth-panel"><button className="back-button" onClick={onBack}><ChevronLeft size={16} /> Back to templates</button><div className="auth-icon"><Mail size={22} /></div><Badge className="eyebrow">ONE-TIME ACCESS</Badge><h2>Let’s make it yours.</h2><p>Enter your email and we’ll send a one-time code. No password, no account setup.</p><label>Email address</label><Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" type="email" />{!sent ? <Button className="primary-button full-button" onClick={requestOtp}>Send me a code <ArrowRight size={16} /></Button> : <><div className="otp-sent"><Check size={15} /> Code sent to {email}</div><label>Enter your code</label><Input value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="4-digit code" inputMode="numeric" /><Button className="primary-button full-button" onClick={verify}>Continue <ArrowRight size={16} /></Button><button className="resend-button" onClick={requestOtp}>Resend code</button></>}{error && <div className="form-error">{error}</div>}<p className="demo-hint">For this preview, use <strong>{demoOtp}</strong> as the code.</p></div>;
+  return <div className="auth-panel"><button className="back-button" onClick={onBack}><ChevronLeft size={16} /> Back to templates</button><div className="auth-icon"><Mail size={22} /></div><Badge className="eyebrow">ONE-TIME ACCESS</Badge><h2>Let’s make it yours.</h2><p>Enter your email and we’ll send a one-time code. No password, no account setup.</p><label>Email address</label><Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" type="email" disabled={sent} />{!sent ? <Button className="primary-button full-button" onClick={requestOtp} disabled={busy}>{request.isPending ? "Sending" : "Send me a code"} <ArrowRight size={16} /></Button> : <><div className="otp-sent"><Check size={15} /> Code sent to {email}</div><label>Enter your code</label><Input value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="6-digit code" inputMode="numeric" autoFocus /><Button className="primary-button full-button" onClick={verifyOtp} disabled={busy}>{verify.isPending ? "Checking" : "Continue"} <ArrowRight size={16} /></Button><button className="resend-button" onClick={requestOtp} disabled={busy}>Resend code</button><button className="resend-button" onClick={() => { setSent(false); setOtp(""); setError(""); }}>Use a different email</button></>}{error && <div className="form-error">{error}</div>}</div>;
 }
 
-function CreationForm({ email, template, onDone, onBack }: { email: string; template: typeof templates[number]; onDone: (campaign: Campaign) => void; onBack: () => void }) {
+function CreationForm({ email, template, onDone, onBack }: { email: string; template: TemplateItem; onDone: (campaign: Campaign) => void; onBack: () => void }) {
   const [step, setStep] = useState(1);
   const [graduate, setGraduate] = useState({ name: "", nickname: "", phone: "", email, date: "2026-12-12", message: "I would love for you to join me as I celebrate this special milestone." });
   const [ceremony, setCeremony] = useState({ name: "University of Rwanda — Main Campus", location: "Kigali, Rwanda", directions: "" });
@@ -323,11 +266,12 @@ type Campaign = { id: string; email: string; templateId: string; graduate: { nam
 
 function CreatorPage({ initialTemplate }: { initialTemplate?: string }) {
   const [, navigate] = useLocation();
+  const templates = useTemplates();
   const [templateId, setTemplateId] = useState(initialTemplate || templates[0].id);
   const [email, setEmail] = useState("");
   const [verified, setVerified] = useState(false);
   const template = templates.find((item) => item.id === templateId) || templates[0];
-  return <div className="creator-page"><header className="minimal-nav"><Link href="/" className="brand-lockup"><span className="brand-mark"><Sparkles size={15} /></span><span>grad<span>invite</span></span></Link><span className="minimal-label">Create an invitation</span></header>{!verified ? <div className="creator-auth-wrap"><div className="template-pick-side"><span className="preview-label">START WITH A STYLE</span><h1>A little look<br /><em>goes a long way.</em></h1><div className="creator-template-list">{templates.map((item) => <TemplateMiniCard key={item.id} template={item} selected={item.id === templateId} onClick={() => setTemplateId(item.id)} />)}</div></div><OtpStep email={email} setEmail={setEmail} onVerified={() => setVerified(true)} onBack={() => navigate("/")} /></div> : <CreationForm email={email} template={template} onBack={() => setVerified(false)} onDone={(campaign) => navigate(`/created/${campaign.id}`)} />}</div>;
+  return <div className="creator-page"><header className="minimal-nav"><Link href="/" className="brand-lockup"><span className="brand-mark"><Sparkles size={15} /></span><span>grad<span>invite</span></span></Link><span className="minimal-label">Create an invitation</span></header>{!verified ? <div className="creator-auth-wrap"><div className="template-pick-side"><span className="preview-label">START WITH A STYLE</span><h1>A little look<br /><em>goes a long way.</em></h1><div className="creator-template-list">{templates.map((item) => <TemplateMiniCard key={item.id} template={item} selected={item.id === templateId} onClick={() => setTemplateId(item.id)} />)}</div></div><OtpStep email={email} setEmail={setEmail} templateId={templateId} onVerified={() => setVerified(true)} onBack={() => navigate("/")} /></div> : <CreationForm email={email} template={template} onBack={() => setVerified(false)} onDone={(campaign) => navigate(`/created/${campaign.id}`)} />}</div>;
 }
 
 function CreatedPage({ campaignId }: { campaignId: string }) {
@@ -340,6 +284,7 @@ function CreatedPage({ campaignId }: { campaignId: string }) {
 }
 
 function PublicInvite({ inviteId }: { inviteId: string }) {
+  const templates = useTemplates(true);
   const campaigns = getLocal<Campaign[]>("gradinvite-campaigns", []);
   const campaign = campaigns.find((item) => inviteId.startsWith(`${item.id}-`)) || { id: "demo", email: "", templateId: "terracotta", graduate: { name: "Aline Mukamana", nickname: "", phone: "", email: "", date: "2026-12-12", message: "I would love for you to join me as I celebrate this special milestone." }, ceremony: { name: "University of Rwanda — Main Campus", location: "Kigali, Rwanda", directions: "" }, celebration: { name: "The Garden Terrace", location: "Nyarugenge, Kigali", directions: "" }, invitees: [{ id: "guest", name: "Dear friend", phone: "" }], delivery: "both" as const, image: null, createdAt: "" };
   const guest = campaign.invitees.find((item) => inviteId === `${campaign.id}-${item.id}`) || campaign.invitees[0];
@@ -357,19 +302,21 @@ function PublicInvite({ inviteId }: { inviteId: string }) {
 function ViewCreations() {
   const [, navigate] = useLocation();
   const [email, setEmail] = useState(""); const [otp, setOtp] = useState(""); const [sent, setSent] = useState(false); const [campaigns, setCampaigns] = useState<Campaign[]>([]); const [error, setError] = useState("");
-  const request = () => { if (!email.includes("@")) { setError("Enter the email you used to create your invitations."); return; } setError(""); setSent(true); toast.success("A code is ready", { description: `Demo code: ${demoOtp}` }); };
-  const verify = () => { if (otp !== demoOtp) { setError(`Use the demo code ${demoOtp} for this preview.`); return; } setCampaigns(getLocal<Campaign[]>("gradinvite-campaigns", []).filter((item) => item.email.toLowerCase() === email.toLowerCase())); };
-  return <div className="simple-page"><header className="minimal-nav"><Link href="/" className="brand-lockup"><span className="brand-mark"><Sparkles size={15} /></span><span>grad<span>invite</span></span></Link><button className="back-button" onClick={() => navigate("/")}><ChevronLeft size={16} /> Home</button></header><main className="view-main"><div className="view-heading"><Badge className="eyebrow">YOUR SPACE</Badge><h1>Welcome back<br /><em>to your creations.</em></h1><p>Enter the email you used before. We’ll send a one-time code so you can pick up where you left off.</p></div>{campaigns.length === 0 ? <div className="view-auth"><Mail size={21} /><label>Email address</label><Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />{!sent ? <Button className="primary-button full-button" onClick={request}>Send me a code <ArrowRight size={16} /></Button> : <><div className="otp-sent"><Check size={15} /> Code sent to {email}</div><Input value={otp} onChange={(e) => setOtp(e.target.value)} placeholder="Enter 2026 for preview" /><Button className="primary-button full-button" onClick={verify}>View my creations <ArrowRight size={16} /></Button></>}{error && <div className="form-error">{error}</div>}</div> : <div className="my-campaigns"><div className="campaigns-top"><strong>{campaigns.length} creation{campaigns.length > 1 ? "s" : ""}</strong><Button className="primary-button" onClick={() => navigate("/create")}>New invitation <ArrowRight size={15} /></Button></div>{campaigns.map((campaign) => <div className="campaign-row" key={campaign.id}><div className={`campaign-swatch ${campaign.templateId}`} /><div><strong>{campaign.graduate.name}</strong><span>{campaign.invitees.length} individual invitations · {formatDate(campaign.graduate.date)}</span></div><button onClick={() => navigate(`/created/${campaign.id}`)}><ArrowRight size={17} /></button></div>)}</div>}</main></div>;
+  const showCreations = () => {
+    const mine = getLocal<Campaign[]>("gradinvite-campaigns", []).filter((item) => item.email.toLowerCase() === email.toLowerCase());
+    if (mine.length === 0) toast.info("No creations were found for this email on this device.");
+    setCampaigns(mine);
+  };
+  const requestMutation = trpc.otp.request.useMutation({
+    onSuccess: (result) => { const r = result as OtpResult; if (r.bypass) { toast.info(r.reason); showCreations(); return; } setSent(true); toast.success(`Code sent to ${email}`); },
+    onError: (e) => setError(e.message),
+  });
+  const verifyMutation = trpc.otp.verify.useMutation({ onSuccess: showCreations, onError: (e) => setError(e.message) });
+  const request = () => { if (!email.includes("@")) { setError("Enter the email you used to create your invitations."); return; } setError(""); requestMutation.mutate({ email, purpose: "view" }); };
+  const verify = () => { if (otp.length !== 6) { setError("Enter the 6-digit code from your email."); return; } setError(""); verifyMutation.mutate({ email, code: otp }); };
+  return <div className="simple-page"><header className="minimal-nav"><Link href="/" className="brand-lockup"><span className="brand-mark"><Sparkles size={15} /></span><span>grad<span>invite</span></span></Link><button className="back-button" onClick={() => navigate("/")}><ChevronLeft size={16} /> Home</button></header><main className="view-main"><div className="view-heading"><Badge className="eyebrow">YOUR SPACE</Badge><h1>Welcome back<br /><em>to your creations.</em></h1><p>Enter the email you used before. We’ll send a one-time code so you can pick up where you left off.</p></div>{campaigns.length === 0 ? <div className="view-auth"><Mail size={21} /><label>Email address</label><Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />{!sent ? <Button className="primary-button full-button" onClick={request}>Send me a code <ArrowRight size={16} /></Button> : <><div className="otp-sent"><Check size={15} /> Code sent to {email}</div><Input value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="6-digit code" inputMode="numeric" /><Button className="primary-button full-button" onClick={verify}>View my creations <ArrowRight size={16} /></Button></>}{error && <div className="form-error">{error}</div>}</div> : <div className="my-campaigns"><div className="campaigns-top"><strong>{campaigns.length} creation{campaigns.length > 1 ? "s" : ""}</strong><Button className="primary-button" onClick={() => navigate("/create")}>New invitation <ArrowRight size={15} /></Button></div>{campaigns.map((campaign) => <div className="campaign-row" key={campaign.id}><div className={`campaign-swatch ${campaign.templateId}`} /><div><strong>{campaign.graduate.name}</strong><span>{campaign.invitees.length} individual invitations · {formatDate(campaign.graduate.date)}</span></div><button onClick={() => navigate(`/created/${campaign.id}`)}><ArrowRight size={17} /></button></div>)}</div>}</main></div>;
 }
 
-function AdminPage() {
-  const [, navigate] = useLocation();
-  const campaigns = getLocal<Campaign[]>("gradinvite-campaigns", []); const feedback = getLocal<{ rating: number; message: string; phone: string }[]>("gradinvite-feedback", []); const totalInvitees = campaigns.reduce((sum, item) => sum + item.invitees.length, 0); const average = feedback.length ? (feedback.reduce((sum, item) => sum + item.rating, 0) / feedback.length).toFixed(1) : "—";
-  const now = new Date();
-  const todayLabel = now.toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long", year: "numeric" }).toUpperCase();
-  const greeting = now.getHours() < 12 ? "Good morning" : now.getHours() < 18 ? "Good afternoon" : "Good evening";
-  return <div className="admin-page"><aside className="admin-sidebar"><Link href="/" className="brand-lockup"><span className="brand-mark"><Sparkles size={15} /></span><span>grad<span>invite</span></span></Link><div className="admin-profile"><div className="admin-avatar">A</div><div><strong>Admin panel</strong><span>Invitation studio</span></div></div><nav><a className="active"><Sparkles size={16} /> Overview</a><a><Gift size={16} /> Templates <span>{templates.length}</span></a><a><LockKeyhole size={16} /> OTP periods <span>1</span></a><a><Users size={16} /> Invitee requests</a><a><MessageCircle size={16} /> Feedback <span>{feedback.length}</span></a></nav><button className="sidebar-bottom" onClick={() => navigate("/")}><ExternalLink size={15} /> View public site</button></aside><main className="admin-main"><div className="admin-header"><div><span className="admin-kicker">{todayLabel}</span><h1>{greeting}, admin.</h1><p>Here’s what’s happening with your invitation studio.</p></div><div className="admin-actions"><Button variant="outline" onClick={() => navigate("/create")}><Sparkles size={15} /> Preview creator flow</Button></div></div><div className="metric-grid"><div className="metric-card"><span>Active OTP period</span><strong>01</strong><small>Configured and available</small><div className="metric-accent green" /></div><div className="metric-card"><span>Invitations created</span><strong>{campaigns.length}</strong><small>Across all campaigns</small><div className="metric-accent terracotta" /></div><div className="metric-card"><span>Total invitees</span><strong>{totalInvitees}</strong><small>Individual links generated</small><div className="metric-accent gold" /></div><div className="metric-card"><span>Average feedback</span><strong>{average}<small>{average !== "—" && " / 5"}</small></strong><small>{feedback.length ? `${feedback.length} response${feedback.length === 1 ? "" : "s"}` : "No responses yet"}</small><div className="metric-accent blue" /></div></div><div className="admin-grid"><section className="admin-card active-otp"><div className="admin-card-head"><div><span className="card-eyebrow">OTP CONTROL</span><h2>Current access period</h2></div><Badge className="live-badge"><span /> LIVE</Badge></div><div className="otp-control"><div className="otp-code">20<span>26</span></div><div><strong>Creation access is open</strong><p>Anyone can request a code by email until <b>31 October 2026</b>.</p></div></div><div className="otp-progress"><div><span>Usage this period</span><strong>38 / unlimited</strong></div><div className="progress-track"><span style={{ width: "34%" }} /></div></div><Button className="secondary-button">Configure next period <ArrowRight size={15} /></Button></section><section className="admin-card"><div className="admin-card-head"><div><span className="card-eyebrow">TEMPLATE COLLECTION</span><h2>Available styles</h2></div><button className="small-link">Manage <ArrowRight size={14} /></button></div><div className="admin-template-list">{templates.map((item) => <div key={item.id} className="admin-template"><div className={`admin-template-thumb ${item.className}`}><span>{item.monogram}</span></div><div><strong>{item.name}</strong><span>Active template</span></div><Check size={15} /></div>)}</div></section></div><section className="admin-card feedback-card"><div className="admin-card-head"><div><span className="card-eyebrow">LATEST FEEDBACK</span><h2>What guests are saying</h2></div><button className="small-link">View all <ArrowRight size={14} /></button></div>{feedback.length === 0 ? <div className="empty-feedback"><MessageCircle size={20} /><span>Feedback from guests will appear here.</span></div> : <div className="feedback-list">{feedback.slice(0, 3).map((item, index) => <div className="feedback-item" key={index}><div className="feedback-stars">{Array.from({ length: item.rating }).map((_, i) => <Star key={i} size={13} fill="currentColor" />)}</div><p>“{item.message}”</p><span>Verified phone · {item.phone}</span></div>)}</div>}</section></main></div>;
-}
 
 // Only signed-in administrators may open the admin panel; everyone else is sent to sign in.
 function AdminGate({ children }: { children: ReactNode }) {
@@ -395,7 +342,7 @@ export default function Home() {
   if (matchInvite && paramsInvite?.id) return <PublicInvite inviteId={paramsInvite.id} />;
   if (matchCreated && paramsCreated?.id) return <CreatedPage campaignId={paramsCreated.id} />;
   if (matchLogin) return <Login />;
-  if (matchAdmin) return <AdminGate><AdminPage /></AdminGate>;
+  if (matchAdmin) return <AdminGate><Admin /></AdminGate>;
   if (matchCreate) return <CreatorPage initialTemplate={initialTemplate} />;
   if (matchView) return <ViewCreations />;
   return <HomePage onCreate={(templateId) => navigate(templateId ? `/create?template=${templateId}` : "/create")} />;

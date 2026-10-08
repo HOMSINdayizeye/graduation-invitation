@@ -21,11 +21,12 @@ export default function Login() {
   const next = new URLSearchParams(window.location.search).get("next") || "/";
 
   // Register and login return the same { token, user } payload, so one handler finishes either flow.
-  const finish = async (data: { token: string; user: { name: string } }) => {
+  const finish = async (data: { token: string; user: { name: string; role: string } }) => {
     setToken(data.token);
     await utils.auth.me.invalidate();
     toast.success(`Welcome, ${data.user.name}`);
-    navigate(next.startsWith("/") && !next.startsWith("/login") ? next : "/");
+    const explicitNext = next.startsWith("/") && !next.startsWith("/login") && next !== "/";
+    navigate(explicitNext ? next : data.user.role === "admin" ? "/admin" : "/");
   };
   const login = trpc.auth.login.useMutation({ onSuccess: finish, onError: (e) => setError(e.message) });
   const register = trpc.auth.register.useMutation({ onSuccess: finish, onError: (e) => setError(e.message) });
