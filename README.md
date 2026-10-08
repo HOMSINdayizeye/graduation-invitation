@@ -5,7 +5,7 @@ Digital graduation invitations: pick a template, add your details and guests, sh
 ## Project layout
 
 - `frontend/` Vite + React app (port 5173 in development)
-- `backend/` Express + tRPC API (port 3000); in production it also serves the built frontend from `dist/public`
+- `backend/` Express + tRPC API (port 3000); in production it can also serve the built frontend from `frontend/dist`
 
 ## Environment
 
@@ -46,12 +46,23 @@ Signed-in admins open `/admin` (`frontend/src/pages/Admin.tsx`, API in `backend/
 
 Transactional email goes through Brevo's REST API (`backend/server/_core/mail.js`). Set `BREVO_API_KEY` and a verified `MAIL_FROM`; an admin can call the `system.sendTestEmail` API to confirm delivery.
 
+## Deploying
+
+**Option A, one server (simplest):** deploy the repo root as a Node web service (Render, Railway, a VPS). Build with `pnpm install && pnpm build`, start with `pnpm start`, set the backend env keys, and leave `CORS_ORIGIN` and `VITE_API_URL` empty. The backend serves the built frontend from `frontend/dist`.
+
+**Option B, Vercel frontend + Render backend:**
+
+1. Render web service, root directory empty, build `pnpm install && pnpm --filter graduation-invitation-backend build`, start `pnpm start`, backend env keys plus `CORS_ORIGIN=https://<your-app>.vercel.app`.
+2. Vercel project, root directory `frontend`, framework Vite (build `pnpm build`, output `dist`), env `VITE_API_URL=https://<your-backend>.onrender.com`. `frontend/vercel.json` rewrites every path to `index.html` so `/login` and `/admin` work on refresh.
+
+In both cases open MongoDB Atlas network access to `0.0.0.0/0`, since these hosts have no fixed outbound IP.
+
 ## Commands
 
 ```bash
 pnpm install:all   # install root, frontend and backend dependencies
 pnpm dev           # frontend on 5173 + backend on 3000
-pnpm build         # build frontend into dist/public and bundle the backend into backend/dist
+pnpm build         # build frontend into frontend/dist and bundle the backend into backend/dist
 pnpm start         # run the production server (serves API + built frontend)
 pnpm check         # TypeScript check
 ```

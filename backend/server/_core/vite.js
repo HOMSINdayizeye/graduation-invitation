@@ -4,7 +4,7 @@ import path from "path";
 
 // Serves the frontend production build; run from the backend folder (pnpm --filter).
 export function serveStatic(app) {
-  const distPath = path.resolve(process.cwd(), "..", "dist", "public");
+  const distPath = path.resolve(process.cwd(), "..", "frontend", "dist");
   if (!fs.existsSync(distPath)) {
     console.error(
       `Could not find the build directory: ${distPath}, make sure to build the client first`

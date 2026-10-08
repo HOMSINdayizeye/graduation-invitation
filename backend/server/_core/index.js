@@ -4,6 +4,7 @@ import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { connectDb } from "../db.js";
+import { ENV } from "./env.js";
 import { ensureAdminUser, ensureTemplates } from "../seedAdmin.js";
 import { appRouter } from "../routers.js";
 import { createContext } from "./context.js";
@@ -35,6 +36,19 @@ async function startServer() {
   const app = express();
   const server = createServer(app);
   // Configure body parser with larger size limit for file uploads
+  // Allows a frontend hosted on another domain (CORS_ORIGIN, comma-separated) to call the API with its Bearer token.
+  app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    const allowed = origin && (ENV.corsOrigins.includes("*") || ENV.corsOrigins.includes(origin));
+    if (allowed) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Vary", "Origin");
+      res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
+    }
+    if (req.method === "OPTIONS") return res.sendStatus(allowed ? 204 : 403);
+    next();
+  });
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   // tRPC API
