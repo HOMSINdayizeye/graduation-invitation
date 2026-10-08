@@ -50,9 +50,9 @@ Transactional email goes through Brevo's REST API (`backend/server/_core/mail.js
 
 ## Deploying
 
-- **Backend on Render**: Web Service with Root Directory `backend`, build `npm install && npm run build`, start `npm start`. Node 22 comes from `backend/.node-version`. Set the backend env keys plus `CORS_ORIGIN=https://<frontend-domain>`.
-- **Frontend on Vercel**: Root Directory `frontend`, Vite preset (output `dist`), env `VITE_API_URL=https://<backend>.onrender.com`. `frontend/vercel.json` rewrites every path to `index.html`.
-- **Single server instead**: build the frontend, then start the backend with `CORS_ORIGIN` and `VITE_API_URL` empty; it serves `frontend/dist` itself.
+- **Backend on Render**: Web Service with Root Directory `backend`, build `npm install && npm run build`, start `npm start`. Node 22 comes from `backend/.node-version`. Set the backend env keys plus `FRONTEND_URL=https://<frontend-domain>`.
+- **Frontend on Vercel**: Root Directory `frontend`, Vite preset (output `dist`), env `VITE_BACKEND_URL=https://<backend>.onrender.com`. `frontend/vercel.json` rewrites every path to `index.html`.
+- **Single server instead**: build the frontend, then start the backend with `FRONTEND_URL` and `VITE_BACKEND_URL` empty; it serves `frontend/dist` itself.
 
 Open MongoDB Atlas network access to `0.0.0.0/0`, since these hosts have no fixed outbound IP.
 

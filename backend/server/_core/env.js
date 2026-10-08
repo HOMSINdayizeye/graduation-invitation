@@ -6,7 +6,8 @@ if (!jwtSecret) console.warn("[Auth] JWT_SECRET is not set; using an insecure de
 
 export const ENV = {
   isProduction: process.env.NODE_ENV === "production",
-  corsOrigins: (process.env.CORS_ORIGIN ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+  // Browser origins allowed to call the API: FRONTEND_URL (preferred name) or CORS_ORIGIN, comma-separated.
+  corsOrigins: `${process.env.FRONTEND_URL ?? ""},${process.env.CORS_ORIGIN ?? ""}`.split(",").map((s) => s.trim().replace(/\/+$/, "")).filter(Boolean),
   mongoUri: process.env.MONGODB_URI ?? "",
   mongoDbName: process.env.MONGODB_DB ?? process.env.MONGODB_DB_NAME ?? "",
   jwtSecret: jwtSecret || "gradinvite-dev-secret",

@@ -2,19 +2,23 @@ import express from "express";
 import fs from "fs";
 import path from "path";
 
-// Serves the frontend production build; run from the backend folder (pnpm --filter).
+// Serves the frontend build when it exists next to the backend (single-server deployment).
+// When the frontend is hosted elsewhere (Vercel), non-API routes answer with a small status message instead.
 export function serveStatic(app) {
   const distPath = path.resolve(process.cwd(), "..", "frontend", "dist");
-  if (!fs.existsSync(distPath)) {
-    console.error(
-      `Could not find the build directory: ${distPath}, make sure to build the client first`
-    );
+  const indexPath = path.resolve(distPath, "index.html");
+
+  if (!fs.existsSync(indexPath)) {
+    console.log("[Static] No frontend build found; running as API only.");
+    app.use("*", (_req, res) => {
+      res.json({ ok: true, service: "graduation-invitation-api", message: "API is running. The frontend is hosted separately." });
+    });
+    return;
   }
 
   app.use(express.static(distPath));
-
-  // fall through to index.html if the file doesn't exist
+  // Fall through to index.html so client-side routes work on refresh.
   app.use("*", (_req, res) => {
-    res.sendFile(path.resolve(distPath, "index.html"));
+    res.sendFile(indexPath);
   });
 }

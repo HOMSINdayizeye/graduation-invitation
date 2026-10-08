@@ -38,8 +38,8 @@ queryClient.getMutationCache().subscribe(event => {
 const trpcClient = trpc.createClient({
   links: [
     httpBatchLink({
-      // Empty when the backend serves the frontend itself; set VITE_API_URL when the frontend is hosted elsewhere (Vercel).
-      url: `${(import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "")}/api/trpc`,
+      // Empty when the backend serves the frontend itself; set VITE_BACKEND_URL when the frontend is hosted elsewhere (Vercel).
+      url: `${(import.meta.env.VITE_BACKEND_URL ?? import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "")}/api/trpc`,
       transformer: superjson,
       // The sign-in JWT travels as a Bearer token on every request.
       headers() {
