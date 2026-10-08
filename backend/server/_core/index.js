@@ -30,9 +30,6 @@ async function findAvailablePort(startPort = 3000) {
 }
 
 async function startServer() {
-  await connectDb();
-  await ensureAdminUser();
-  await ensureTemplates();
   const app = express();
   const server = createServer(app);
   // Configure body parser with larger size limit for file uploads
@@ -73,8 +70,16 @@ async function startServer() {
     console.warn(`Port ${preferredPort} is busy, using port ${port} instead. Update the frontend proxy target in frontend/vite.config.js to match.`);
   }
 
+  // Open the port first so the host sees the service immediately; the database connects in the background.
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
+    connectDb()
+      .then(async (connected) => {
+        if (!connected) return;
+        await ensureAdminUser();
+        await ensureTemplates();
+      })
+      .catch((error) => console.error("[Startup] Database setup failed:", error));
   });
 }
 
