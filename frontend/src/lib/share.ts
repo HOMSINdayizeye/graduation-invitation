@@ -1,4 +1,5 @@
 import QRCode from "qrcode";
+import { toPng } from "html-to-image";
 
 // Copies text with the async clipboard API, falling back to a hidden textarea for older or non-secure contexts.
 export async function copyText(text: string): Promise<boolean> {
@@ -72,3 +73,30 @@ export function shrinkImage(file: File, maxSide = 900): Promise<string> {
     reader.readAsDataURL(file);
   });
 }
+
+// Renders the letter node to a PNG at 2x, using the template page colour as the backdrop.
+export async function letterToPng(node: HTMLElement): Promise<Blob> {
+  const page = node.closest<HTMLElement>(".public-invite");
+  const backgroundColor = page ? getComputedStyle(page).backgroundColor : "#ffffff";
+  // Rendering waits on image decoding, which browsers pause in hidden tabs, so give up instead of hanging forever.
+  const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Rendering took too long. Keep this tab visible and try again.")), 30000));
+  const dataUrl = await Promise.race([toPng(node, { pixelRatio: 2, cacheBust: true, backgroundColor }), timeout]);
+  return (await fetch(dataUrl)).blob();
+}
+
+export const canShareFiles = () => typeof navigator !== "undefined" && typeof navigator.canShare === "function" && navigator.canShare({ files: [new File([""], "x.png", { type: "image/png" })] });
+
+// Hands an image to the phone's share sheet; returns false when unsupported or cancelled.
+export async function shareFile(blob: Blob, filename: string, title: string): Promise<boolean> {
+  if (!canShareFiles()) return false;
+  try { await navigator.share({ files: [new File([blob], filename, { type: blob.type })], title }); return true; } catch { return false; }
+}
+
+// Writes a UTF-8 CSV that Excel opens cleanly; phone numbers keep their leading zero.
+export function downloadCsv(rows: (string | number)[][], filename: string) {
+  const esc = (v: string | number) => { const t = String(v ?? ""); return /[",\r\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
+  const csv = "\uFEFF" + rows.map((r) => r.map(esc).join(",")).join("\r\n");
+  downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8" }), filename);
+}
+
+export const slug = (s: string) => s.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "guest";

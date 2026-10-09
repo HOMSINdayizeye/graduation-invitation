@@ -2,6 +2,7 @@ import { createHash, randomInt } from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { ENV } from "./_core/env.js";
+import { generateAccessToken } from "./_core/jwt.js";
 import { sendEmail } from "./_core/mail.js";
 import { publicProcedure, router } from "./_core/trpc.js";
 import { isDbConnected } from "./db.js";
@@ -13,6 +14,9 @@ const MAX_VERIFY_ATTEMPTS = 5;
 const MAX_REQUESTS_PER_WINDOW = 5;
 
 const emailField = z.string().trim().toLowerCase().email("Enter a valid email address");
+
+// Lets the creator read their own invitations (with phone numbers) for a day without a password.
+const creatorToken = (email) => generateAccessToken({ email, scope: "creator" });
 
 // Codes are stored hashed together with the email so a leaked database row cannot be replayed.
 const hashCode = (email, code) => createHash("sha256").update(`${email}:${code}`).digest("hex");
@@ -43,7 +47,7 @@ export const otpRouter = router({
 
       if (!settings.otpRequired) {
         await OtpRequest.create({ ...base, status: "bypassed", error: "OTP not required (admin setting)" });
-        return { bypass: true, reason: "No code is needed right now. You can continue." };
+        return { bypass: true, reason: "No code is needed right now. You can continue.", accessToken: creatorToken(input.email) };
       }
 
       const windowStart = new Date(Date.now() - CODE_TTL_MINUTES * 60 * 1000);
@@ -71,7 +75,7 @@ export const otpRouter = router({
           doc.status = "bypassed";
           doc.codeHash = "";
           await doc.save();
-          return { bypass: true, reason: "We could not send an email right now, so you may continue without a code." };
+          return { bypass: true, reason: "We could not send an email right now, so you may continue without a code.", accessToken: creatorToken(input.email) };
         }
         doc.status = "failed";
         await doc.save();
@@ -107,6 +111,6 @@ export const otpRouter = router({
       doc.status = "verified";
       doc.verifiedAt = new Date();
       await doc.save();
-      return { ok: true };
+      return { ok: true, accessToken: creatorToken(input.email) };
     }),
 });

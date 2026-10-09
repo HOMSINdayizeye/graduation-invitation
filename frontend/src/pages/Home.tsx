@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useRoute } from "wouter";
 import {
   ArrowRight,
@@ -8,6 +8,7 @@ import {
   Clipboard,
   Download,
   ExternalLink,
+  FileDown,
   Gift,
   GraduationCap,
   ImagePlus,
@@ -28,7 +29,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "@/lib/toast";
-import { canShare, copyText, downloadBlob, qrDataUrl, qrPosterBlob, shareLink, shrinkImage } from "@/lib/share";
+import { canShare, canShareFiles, copyText, downloadBlob, downloadCsv, letterToPng, qrDataUrl, qrPosterBlob, shareFile, shareLink, shrinkImage, slug } from "@/lib/share";
 import { playSound } from "@/lib/sounds";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,6 +53,11 @@ function useTemplates(includeHidden = false): TemplateItem[] {
 
 // Every invitee gets a unique id so a guest link can be matched exactly.
 const createInvitee = () => ({ id: crypto.randomUUID(), name: "", phone: "" });
+
+// A verified email gets a 24h token so the creator can list their own invitations with phone numbers.
+const TOKEN_KEY = "gradinvite-creator-token";
+const setCreatorToken = (token?: string) => { if (!token) return; try { sessionStorage.setItem(TOKEN_KEY, token); } catch { /* storage unavailable */ } };
+const getCreatorToken = () => { try { return sessionStorage.getItem(TOKEN_KEY) ?? ""; } catch { return ""; } };
 
 function saveLocal(key: string, value: unknown) {
   try {
@@ -205,7 +211,7 @@ function HomePage({ onCreate }: { onCreate: (templateId?: string) => void }) {
   );
 }
 
-type OtpResult = { bypass: boolean; reason?: string; expiresInMinutes?: number };
+type OtpResult = { bypass: boolean; reason?: string; expiresInMinutes?: number; accessToken?: string };
 
 function OtpStep({ email, setEmail, templateId, onVerified, onBack }: { email: string; setEmail: (s: string) => void; templateId: string; onVerified: () => void; onBack: () => void }) {
   const [sent, setSent] = useState(false);
@@ -214,13 +220,13 @@ function OtpStep({ email, setEmail, templateId, onVerified, onBack }: { email: s
   const request = trpc.otp.request.useMutation({
     onSuccess: (result) => {
       const r = result as OtpResult;
-      if (r.bypass) { toast.info(r.reason); onVerified(); return; }
+      if (r.bypass) { setCreatorToken(r.accessToken); toast.info(r.reason); onVerified(); return; }
       setSent(true); setOtp(""); toast.success(`Code sent to ${email}`, { description: `It expires in ${r.expiresInMinutes} minutes.` });
     },
     onError: (e) => { playSound("error"); setError(e.message); },
   });
   // Email verified plays the confirm sound; a wrong or expired code plays the error sound.
-  const verify = trpc.otp.verify.useMutation({ onSuccess: () => { playSound("confirm"); onVerified(); }, onError: (e) => { playSound("error"); setError(e.message); } });
+  const verify = trpc.otp.verify.useMutation({ onSuccess: (r) => { setCreatorToken((r as { accessToken?: string }).accessToken); playSound("confirm"); onVerified(); }, onError: (e) => { playSound("error"); setError(e.message); } });
   const busy = request.isPending || verify.isPending;
   const requestOtp = () => {
     if (!email.includes("@")) { playSound("error"); setError("Enter a valid email address."); return; }
@@ -323,14 +329,54 @@ function InviteQr({ link, campaign, guest }: { link: string; campaign: Campaign;
   </>;
 }
 
+// The letter itself, shared by the public page and the offscreen renderer used for downloads.
+function InviteLetter({ campaign, guest }: { campaign: Campaign; guest?: Invitee }) {
+  return <article className="invite-letter"><span className="letter-seal" aria-hidden="true">{campaign.graduate.name.charAt(0)}</span><div className="letter-head"><span>{formatDate(campaign.graduate.date)}</span><span>You are invited</span></div><div className="invite-ornament">✦</div><span className="invite-kicker">YOU ARE INVITED TO CELEBRATE</span><h1>{campaign.graduate.name}</h1>{campaign.image ? <img className="invite-photo" src={campaign.image} alt={campaign.graduate.name} /> : <div className="invite-photo-placeholder">{campaign.graduate.name.charAt(0)}</div>}<p className="invite-guest">Dear {(guest?.name || "friend").replace(/^dears+/i, "")},</p><p className="invite-message">{campaign.graduate.message}</p><div className="invite-date-block"><span>{formatDate(campaign.graduate.date)}</span><i /> <span>2026</span></div><div className="invite-locations"><div><span className="location-label"><CalendarDays size={14} /> Graduation ceremony</span><strong>{campaign.ceremony.name}</strong><span>{campaign.ceremony.location}</span>{campaign.ceremony.directions && <a href={campaign.ceremony.directions} target="_blank" rel="noreferrer">View directions <ExternalLink size={12} /></a>}</div><div><span className="location-label"><Gift size={14} /> Celebration</span><strong>{campaign.celebration.name}</strong><span>{campaign.celebration.location}</span>{campaign.celebration.directions && <a href={campaign.celebration.directions} target="_blank" rel="noreferrer">View directions <ExternalLink size={12} /></a>}</div></div><div className="invite-footer-note">It would mean so much to have you there.</div><div className="letter-signature"><span>With love,</span><strong>{campaign.graduate.name}{campaign.graduate.nickname ? ` · ${campaign.graduate.nickname}` : ""}</strong></div></article>;
+}
+
+// Turns a rendered letter into a PNG and either downloads it or hands it to the phone's share sheet.
+async function exportLetter(node: HTMLElement, campaign: Campaign, guest: Invitee | undefined, share: boolean) {
+  try {
+    const blob = await letterToPng(node);
+    const name = `invitation-${slug(campaign.graduate.name)}-${slug(guest?.name || "guest")}.png`;
+    if (share && (await shareFile(blob, name, `Invitation from ${campaign.graduate.name}`))) { toast.success("Invitation letter shared"); return; }
+    downloadBlob(blob, name);
+    toast.success("Invitation letter downloaded");
+  } catch (e) { toast.error(e instanceof Error ? e.message : "Could not build the letter image"); }
+}
+
+// Download or send one guest's letter from the created page; the letter is rendered offscreen for the snapshot.
+function LetterActions({ campaign, guest, template }: { campaign: Campaign; guest: Invitee; template: TemplateItem }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [busy, setBusy] = useState(false);
+  const run = async (share: boolean) => { if (!ref.current) return; setBusy(true); await exportLetter(ref.current, campaign, guest, share); setBusy(false); };
+  return <>
+    <button type="button" onClick={() => run(false)} disabled={busy}><FileDown size={15} /> {busy ? "Preparing" : "Letter"}</button>
+    {canShareFiles() && <button type="button" onClick={() => run(true)} disabled={busy}><Send size={15} /> Send letter</button>}
+    <div className="letter-offscreen" aria-hidden="true"><div ref={ref} className={`letter-shot public-invite ${template.className}`}><InviteLetter campaign={campaign} guest={guest} /></div></div>
+  </>;
+}
+
+// One CSV with every guest across the given invitations: graduate, date, guest, phone and private link.
+function downloadGuestList(campaigns: Campaign[]) {
+  const base = `${window.location.origin}/invite`;
+  const rows: (string | number)[][] = [["Graduate", "Graduation date", "Guest", "Phone", "Invitation link"]];
+  for (const c of campaigns) for (const g of c.invitees) rows.push([c.graduate.name, c.graduate.date, g.name, g.phone ? `="${g.phone}"` : "", `${base}/${c.id}-${g.id}`]);
+  if (rows.length === 1) { toast.error("There are no guests to export yet"); return; }
+  downloadCsv(rows, `gradinvite-guests-${new Date().toISOString().slice(0, 10)}.csv`);
+  toast.success("Guest list downloaded");
+}
+
 function CreatedPage({ campaignId }: { campaignId: string }) {
   const [, navigate] = useLocation();
   const local = getLocal<Campaign[]>("gradinvite-campaigns", []).find((item) => item.id === campaignId);
-  const remote = trpc.campaigns.get.useQuery({ id: campaignId }, { enabled: !local, retry: false });
+  const templates = useTemplates(true);
+  const remote = trpc.campaigns.get.useQuery({ id: campaignId, token: getCreatorToken() || undefined }, { enabled: !local, retry: false });
   const campaign = local ?? (remote.data as Campaign | undefined);
   if (!campaign) return remote.isLoading ? <div className="empty-screen"><Sparkles size={25} /><h2>Loading your invitations</h2></div> : <EmptyState title="No invitation found" action={() => navigate("/")} />;
+  const template = templates.find((item) => item.id === campaign.templateId) || templates[0];
   const baseUrl = `${window.location.origin}/invite`;
-  return <div className="created-page"><header className="minimal-nav"><Link href="/" className="brand-lockup"><span className="brand-mark"><Sparkles size={15} /></span><span>grad<span>invite</span></span></Link><Badge className="success-badge"><Check size={13} /> CREATED</Badge></header><main className="created-main"><div className="created-intro"><span className="success-mark"><Check size={24} /></span><Badge className="eyebrow">READY TO SHARE</Badge><h1>{campaign.invitees.length} beautiful invitation{campaign.invitees.length === 1 ? " is" : "s are"}<br /><em>waiting for your people.</em></h1><p>Every guest has their own private link. Copy it, share it, or tap a QR code to enlarge and download it.</p></div><div className="created-list">{campaign.invitees.map((invitee, index) => { const link = `${baseUrl}/${campaign.id}-${invitee.id}`; return <div className="created-invitee" key={invitee.id}><div className="created-number">{String(index + 1).padStart(2, "0")}</div><div className="created-person"><strong>{invitee.name}</strong><span>{invitee.phone}</span></div><div className="created-delivery">{(campaign.delivery === "qr" || campaign.delivery === "both") && <InviteQr link={link} campaign={campaign} guest={invitee} />}{(campaign.delivery === "link" || campaign.delivery === "both") && <ShareButtons link={link} campaign={campaign} guest={invitee} />}</div><a href={link} target="_blank" rel="noreferrer" className="open-invite" aria-label="Open invitation"><ExternalLink size={15} /></a></div>; })}</div><div className="created-actions"><Button className="primary-button" onClick={() => navigate(`/invite/${campaign.id}-${campaign.invitees[0].id}`)}>Preview invitation <ArrowRight size={16} /></Button><button className="text-link-button" onClick={() => navigate("/view")}>View all my creations <ArrowRight size={15} /></button></div></main></div>;
+  return <div className="created-page"><header className="minimal-nav"><Link href="/" className="brand-lockup"><span className="brand-mark"><Sparkles size={15} /></span><span>grad<span>invite</span></span></Link><Badge className="success-badge"><Check size={13} /> CREATED</Badge></header><main className="created-main"><div className="created-intro"><span className="success-mark"><Check size={24} /></span><Badge className="eyebrow">READY TO SHARE</Badge><h1>{campaign.invitees.length} beautiful invitation{campaign.invitees.length === 1 ? " is" : "s are"}<br /><em>waiting for your people.</em></h1><p>Every guest has their own private link. Copy it, share it, or tap a QR code to enlarge and download it.</p></div><div className="created-list">{campaign.invitees.map((invitee, index) => { const link = `${baseUrl}/${campaign.id}-${invitee.id}`; return <div className="created-invitee" key={invitee.id}><div className="created-number">{String(index + 1).padStart(2, "0")}</div><div className="created-person"><strong>{invitee.name}</strong><span>{invitee.phone}</span></div><div className="created-delivery">{(campaign.delivery === "qr" || campaign.delivery === "both") && <InviteQr link={link} campaign={campaign} guest={invitee} />}{(campaign.delivery === "link" || campaign.delivery === "both") && <ShareButtons link={link} campaign={campaign} guest={invitee} />}<LetterActions campaign={campaign} guest={invitee} template={template} /></div><a href={link} target="_blank" rel="noreferrer" className="open-invite" aria-label="Open invitation"><ExternalLink size={15} /></a></div>; })}</div><div className="created-actions"><Button className="primary-button" onClick={() => navigate(`/invite/${campaign.id}-${campaign.invitees[0].id}`)}>Preview invitation <ArrowRight size={16} /></Button><button className="text-link-button" onClick={() => downloadGuestList([campaign])}><Download size={15} /> Download guest list</button><button className="text-link-button" onClick={() => navigate("/view")}>View all my creations <ArrowRight size={15} /></button></div></main></div>;
 }
 
 const DEMO_CAMPAIGN: Campaign = { id: "demo", email: "", templateId: "terracotta", graduate: { name: "Aline Mukamana", nickname: "", phone: "", email: "", date: "2026-12-12", message: "I would love for you to join me as I celebrate this special milestone." }, ceremony: { name: "University of Rwanda — Main Campus", location: "Kigali, Rwanda", directions: "" }, celebration: { name: "The Garden Terrace", location: "Nyarugenge, Kigali", directions: "" }, invitees: [{ id: "guest", name: "friend", phone: "" }], delivery: "both" as const, image: null, createdAt: "" };
@@ -355,27 +401,38 @@ function PublicInvite({ inviteId }: { inviteId: string }) {
   if (!campaign) return remote.isLoading ? <div className="empty-screen"><Sparkles size={25} /><h2>Opening your invitation</h2></div> : <EmptyState title="This invitation link is not valid or has been removed." action={() => window.location.assign("/")} />;
   const guest = campaign.invitees.find((item) => inviteId === `${campaign.id}-${item.id}`) || campaign.invitees[0];
   const template = templates.find((item) => item.id === campaign.templateId) || templates[0];
-  return <div className={`public-invite ${template.className}`}><div className="invite-topbar"><Link href="/" className="brand-lockup"><span className="brand-mark"><Sparkles size={14} /></span><span>grad<span>invite</span></span></Link><button onClick={() => setFeedbackOpen(true)} className="feedback-trigger"><MessageCircle size={15} /> Leave feedback</button></div><main className="invite-main invite-letter-wrap"><article className="invite-letter"><span className="letter-seal" aria-hidden="true">{campaign.graduate.name.charAt(0)}</span><div className="letter-head"><span>{formatDate(campaign.graduate.date)}</span><span>You are invited</span></div><div className="invite-ornament">✦</div><span className="invite-kicker">YOU ARE INVITED TO CELEBRATE</span><h1>{campaign.graduate.name}</h1>{campaign.image ? <img className="invite-photo" src={campaign.image} alt={campaign.graduate.name} /> : <div className="invite-photo-placeholder">{campaign.graduate.name.charAt(0)}</div>}<p className="invite-guest">Dear {(guest?.name || "friend").replace(/^dears+/i, "")},</p><p className="invite-message">{campaign.graduate.message}</p><div className="invite-date-block"><span>{formatDate(campaign.graduate.date)}</span><i /> <span>2026</span></div><div className="invite-locations"><div><span className="location-label"><CalendarDays size={14} /> Graduation ceremony</span><strong>{campaign.ceremony.name}</strong><span>{campaign.ceremony.location}</span>{campaign.ceremony.directions && <a href={campaign.ceremony.directions} target="_blank" rel="noreferrer">View directions <ExternalLink size={12} /></a>}</div><div><span className="location-label"><Gift size={14} /> Celebration</span><strong>{campaign.celebration.name}</strong><span>{campaign.celebration.location}</span>{campaign.celebration.directions && <a href={campaign.celebration.directions} target="_blank" rel="noreferrer">View directions <ExternalLink size={12} /></a>}</div></div><div className="invite-footer-note">It would mean so much to have you there.</div><div className="letter-signature"><span>With love,</span><strong>{campaign.graduate.name}{campaign.graduate.nickname ? ` · ${campaign.graduate.nickname}` : ""}</strong></div></article><p className="letter-brand">Sent with GradInvite</p></main>{feedbackOpen && <div className="modal-backdrop" onClick={() => setFeedbackOpen(false)}><div className="feedback-modal" onClick={(e) => e.stopPropagation()}><button className="modal-close" onClick={() => setFeedbackOpen(false)}><X size={18} /></button><Badge className="eyebrow">A QUICK NOTE</Badge><h2>How did this invitation feel?</h2><p>Your feedback helps us make every celebration a little better.</p><div className="stars">{[1,2,3,4,5].map((n) => <button key={n} className={rating >= n ? "star-active" : ""} onClick={() => setRating(n)}><Star size={24} fill="currentColor" /></button>)}</div><label>Phone number</label><div className="validate-row"><Input value={phone} onChange={(e) => { setPhone(e.target.value.replace(/\D/g, "").slice(0, 10)); setValidated(false); }} placeholder="079 000 0000" /><Button variant="outline" onClick={validatePhone}>{validated ? <Check size={15} /> : "Validate"}</Button></div><label>Your message</label><Textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={4} placeholder="Tell us what you loved…" /><Button className="primary-button full-button" onClick={submitFeedback}>Send feedback <Send size={15} /></Button></div></div>}</div>;
+  return <div className={`public-invite ${template.className}`}><div className="invite-topbar"><Link href="/" className="brand-lockup"><span className="brand-mark"><Sparkles size={14} /></span><span>grad<span>invite</span></span></Link><div className="invite-topbar-actions"><button onClick={() => { const node = document.querySelector<HTMLElement>(".invite-letter-wrap"); if (node) exportLetter(node, campaign, guest, false); }} className="feedback-trigger"><Download size={15} /> Save letter</button><button onClick={() => setFeedbackOpen(true)} className="feedback-trigger"><MessageCircle size={15} /> Leave feedback</button></div></div><main className="invite-main invite-letter-wrap"><InviteLetter campaign={campaign} guest={guest} /><p className="letter-brand">Sent with GradInvite</p></main>{feedbackOpen && <div className="modal-backdrop" onClick={() => setFeedbackOpen(false)}><div className="feedback-modal" onClick={(e) => e.stopPropagation()}><button className="modal-close" onClick={() => setFeedbackOpen(false)}><X size={18} /></button><Badge className="eyebrow">A QUICK NOTE</Badge><h2>How did this invitation feel?</h2><p>Your feedback helps us make every celebration a little better.</p><div className="stars">{[1,2,3,4,5].map((n) => <button key={n} className={rating >= n ? "star-active" : ""} onClick={() => setRating(n)}><Star size={24} fill="currentColor" /></button>)}</div><label>Phone number</label><div className="validate-row"><Input value={phone} onChange={(e) => { setPhone(e.target.value.replace(/\D/g, "").slice(0, 10)); setValidated(false); }} placeholder="079 000 0000" /><Button variant="outline" onClick={validatePhone}>{validated ? <Check size={15} /> : "Validate"}</Button></div><label>Your message</label><Textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={4} placeholder="Tell us what you loved…" /><Button className="primary-button full-button" onClick={submitFeedback}>Send feedback <Send size={15} /></Button></div></div>}</div>;
 }
 
 function ViewCreations() {
   const [, navigate] = useLocation();
-  const [email, setEmail] = useState(""); const [otp, setOtp] = useState(""); const [sent, setSent] = useState(false); const [campaigns, setCampaigns] = useState<Campaign[]>([]); const [error, setError] = useState("");
-  const showCreations = () => {
-    const mine = getLocal<Campaign[]>("gradinvite-campaigns", []).filter((item) => item.email.toLowerCase() === email.toLowerCase());
-    if (mine.length === 0) toast.info("No creations were found for this email on this device.");
-    setCampaigns(mine);
-  };
+  const [email, setEmail] = useState(""); const [otp, setOtp] = useState(""); const [sent, setSent] = useState(false); const [error, setError] = useState("");
+  const [token, setToken] = useState(getCreatorToken());
+  const [unlocked, setUnlocked] = useState(Boolean(getCreatorToken()));
+  // The server list is the source of truth; invitations cached in this browser fill in if the server is unreachable.
+  const mine = trpc.campaigns.listMine.useQuery({ token }, { enabled: unlocked && Boolean(token), retry: false });
+  const localMine = getLocal<Campaign[]>("gradinvite-campaigns", []).filter((item) => !email || item.email.toLowerCase() === email.toLowerCase());
+  const campaigns: Campaign[] = (mine.data as Campaign[] | undefined) ?? (unlocked && !mine.isLoading ? localMine : []);
+  const unlock = (accessToken?: string) => { setCreatorToken(accessToken); setToken(accessToken ?? getCreatorToken()); setUnlocked(true); };
   const requestMutation = trpc.otp.request.useMutation({
-    onSuccess: (result) => { const r = result as OtpResult; if (r.bypass) { toast.info(r.reason); showCreations(); return; } setSent(true); toast.success(`Code sent to ${email}`); },
+    onSuccess: (result) => { const r = result as OtpResult; if (r.bypass) { toast.info(r.reason); unlock(r.accessToken); return; } setSent(true); toast.success(`Code sent to ${email}`); },
     onError: (e) => { playSound("error"); setError(e.message); },
   });
-  const verifyMutation = trpc.otp.verify.useMutation({ onSuccess: () => { playSound("confirm"); showCreations(); }, onError: (e) => { playSound("error"); setError(e.message); } });
+  const verifyMutation = trpc.otp.verify.useMutation({ onSuccess: (r) => { playSound("confirm"); unlock((r as { accessToken?: string }).accessToken); }, onError: (e) => { playSound("error"); setError(e.message); } });
   const request = () => { if (!email.includes("@")) { playSound("error"); setError("Enter the email you used to create your invitations."); return; } setError(""); requestMutation.mutate({ email, purpose: "view" }); };
   const verify = () => { if (otp.length !== 6) { playSound("error"); setError("Enter the 6-digit code from your email."); return; } setError(""); verifyMutation.mutate({ email, code: otp }); };
-  return <div className="simple-page"><header className="minimal-nav"><Link href="/" className="brand-lockup"><span className="brand-mark"><Sparkles size={15} /></span><span>grad<span>invite</span></span></Link><button className="back-button" onClick={() => navigate("/")}><ChevronLeft size={16} /> Home</button></header><main className="view-main"><div className="view-heading"><Badge className="eyebrow">YOUR SPACE</Badge><h1>Welcome back<br /><em>to your creations.</em></h1><p>Enter the email you used before. We’ll send a one-time code so you can pick up where you left off.</p></div>{campaigns.length === 0 ? <div className="view-auth"><Mail size={21} /><label>Email address</label><Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />{!sent ? <Button className="primary-button full-button" onClick={request}>Send me a code <ArrowRight size={16} /></Button> : <><div className="otp-sent"><Check size={15} /> Code sent to {email}</div><Input value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="6-digit code" inputMode="numeric" /><Button className="primary-button full-button" onClick={verify}>View my creations <ArrowRight size={16} /></Button></>}{error && <div className="form-error">{error}</div>}</div> : <div className="my-campaigns"><div className="campaigns-top"><strong>{campaigns.length} creation{campaigns.length > 1 ? "s" : ""}</strong><Button className="primary-button" onClick={() => navigate("/create")}>New invitation <ArrowRight size={15} /></Button></div>{campaigns.map((campaign) => <div className="campaign-row" key={campaign.id}><div className={`campaign-swatch ${campaign.templateId}`} /><div><strong>{campaign.graduate.name}</strong><span>{campaign.invitees.length} individual invitations · {formatDate(campaign.graduate.date)}</span></div><button onClick={() => navigate(`/created/${campaign.id}`)}><ArrowRight size={17} /></button></div>)}</div>}</main></div>;
+  const guestCount = campaigns.reduce((n, c) => n + c.invitees.length, 0);
+  const baseUrl = `${window.location.origin}/invite`;
+  return <div className="simple-page"><header className="minimal-nav"><Link href="/" className="brand-lockup"><span className="brand-mark"><Sparkles size={15} /></span><span>grad<span>invite</span></span></Link><button className="back-button" onClick={() => navigate("/")}><ChevronLeft size={16} /> Home</button></header><main className="view-main"><div className="view-heading"><Badge className="eyebrow">YOUR SPACE</Badge><h1>Welcome back<br /><em>to your creations.</em></h1><p>{unlocked ? "Every invitation you sent, with each guest, their phone number and their private link." : "Enter the email you used before. We’ll send a one-time code so you can pick up where you left off."}</p></div>
+    {!unlocked ? <div className="view-auth"><Mail size={21} /><label>Email address</label><Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" type="email" />{!sent ? <Button className="primary-button full-button" onClick={request} disabled={requestMutation.isPending}>{requestMutation.isPending ? "Sending" : "Send me a code"} <ArrowRight size={16} /></Button> : <><div className="otp-sent"><Check size={15} /> Code sent to {email}</div><Input value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="6-digit code" inputMode="numeric" autoFocus /><Button className="primary-button full-button" onClick={verify} disabled={verifyMutation.isPending}>{verifyMutation.isPending ? "Checking" : "View my creations"} <ArrowRight size={16} /></Button></>}{error && <div className="form-error">{error}</div>}</div>
+    : mine.isLoading ? <div className="empty-screen" style={{ minHeight: 200 }}><Sparkles size={25} /><h2>Loading your invitations</h2></div>
+    : <div className="my-campaigns"><div className="campaigns-top"><strong>{campaigns.length} invitation{campaigns.length === 1 ? "" : "s"} · {guestCount} guest{guestCount === 1 ? "" : "s"}</strong><div className="campaigns-actions"><Button className="primary-button" onClick={() => downloadGuestList(campaigns)} disabled={guestCount === 0}><Download size={15} /> Download list</Button><Button className="primary-button" onClick={() => navigate("/create")}>New invitation <ArrowRight size={15} /></Button></div></div>
+      {mine.error && <div className="form-error">{mine.error.message} Showing what is saved on this device.</div>}
+      {campaigns.length === 0 && <p className="form-intro">No invitations were found for this email yet.</p>}
+      {campaigns.map((campaign) => <div className="campaign-block" key={campaign.id}><div className="campaign-row"><div className={`campaign-swatch ${campaign.templateId}`} /><div><strong>{campaign.graduate.name}</strong><span>{campaign.invitees.length} guest{campaign.invitees.length === 1 ? "" : "s"} · {formatDate(campaign.graduate.date)} · {campaign.ceremony.name}</span></div><button onClick={() => navigate(`/created/${campaign.id}`)} aria-label="Open sharing page"><ArrowRight size={17} /></button></div>
+        <table className="guest-table"><thead><tr><th>#</th><th>Guest</th><th>Phone</th><th>Link</th></tr></thead><tbody>{campaign.invitees.map((guest, index) => { const link = `${baseUrl}/${campaign.id}-${guest.id}`; return <tr key={guest.id}><td>{index + 1}</td><td>{guest.name || "Guest"}</td><td>{guest.phone || "—"}</td><td><button type="button" onClick={() => copyLink(link)}><Link2 size={13} /> Copy</button> <a href={link} target="_blank" rel="noreferrer" aria-label="Open invitation"><ExternalLink size={13} /></a></td></tr>; })}</tbody></table></div>)}
+    </div>}</main></div>;
 }
-
 
 // Only signed-in administrators may open the admin panel; everyone else is sent to sign in.
 function AdminGate({ children }: { children: ReactNode }) {

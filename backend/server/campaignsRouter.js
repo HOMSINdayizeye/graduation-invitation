@@ -1,5 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import { verifyAccessToken } from "./_core/jwt.js";
 import { publicProcedure, router } from "./_core/trpc.js";
 import { isDbConnected } from "./db.js";
 import { Campaign } from "./models/campaign.js";
@@ -38,7 +39,23 @@ async function assertVerified(email) {
   if (!proof) throw new TRPCError({ code: "FORBIDDEN", message: "Verify your email with a code before saving an invitation." });
 }
 
+// Resolves a creator token to its email, or null when missing or invalid.
+function ownerEmail(token) {
+  if (!token) return null;
+  const result = verifyAccessToken(token);
+  return result.valid && result.decoded?.scope === "creator" ? String(result.decoded.email ?? "").toLowerCase() : null;
+}
+
 export const campaignsRouter = router({
+  // Every invitation this email created, newest first, including guest phone numbers.
+  listMine: publicProcedure.input(z.object({ token: z.string().min(10) })).query(async ({ input }) => {
+    requireDb();
+    const email = ownerEmail(input.token);
+    if (!email) throw new TRPCError({ code: "UNAUTHORIZED", message: "Verify your email again to see your invitations." });
+    const docs = await Campaign.find({ email }).sort({ created_at: -1 });
+    return docs.map((doc) => doc.toOwner());
+  }),
+
   // Stores (or re-stores) a finished invitation so every guest link resolves on any device.
   create: publicProcedure.input(campaignInput).mutation(async ({ input }) => {
     requireDb();
@@ -51,10 +68,10 @@ export const campaignsRouter = router({
   }),
 
   // Public read by id: the id is random, and the response hides phone numbers and the creator's email.
-  get: publicProcedure.input(z.object({ id: z.string().min(1).max(80) })).query(async ({ input }) => {
+  get: publicProcedure.input(z.object({ id: z.string().min(1).max(80), token: z.string().optional() })).query(async ({ input }) => {
     requireDb();
     const doc = await Campaign.findOne({ key: input.id });
     if (!doc) throw new TRPCError({ code: "NOT_FOUND", message: "This invitation link is not valid or has been removed." });
-    return doc.toPublic();
+    return ownerEmail(input.token) === doc.email ? doc.toOwner() : doc.toPublic();
   }),
 });
