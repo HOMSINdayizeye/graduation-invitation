@@ -1,5 +1,6 @@
 import QRCode from "qrcode";
 import { toPng } from "html-to-image";
+import * as XLSX from "xlsx";
 
 // Copies text with the async clipboard API, falling back to a hidden textarea for older or non-secure contexts.
 export async function copyText(text: string): Promise<boolean> {
@@ -100,3 +101,48 @@ export function downloadCsv(rows: (string | number)[][], filename: string) {
 }
 
 export const slug = (s: string) => s.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "guest";
+
+export type GuestRow = { creator: string; graduate: string; date: string; ceremony: string; guest: string; phone: string; link: string };
+type GuestSource = { id: string; email: string; graduate: { name: string; date: string }; ceremony: { name: string }; invitees: { id: string; name: string; phone: string }[] };
+
+// Flattens invitations into one row per guest; the link is the guest's private invitation URL.
+export const guestRows = (campaigns: GuestSource[], origin = window.location.origin): GuestRow[] =>
+  campaigns.flatMap((c) => c.invitees.map((g) => ({ creator: c.email, graduate: c.graduate.name, date: c.graduate.date, ceremony: c.ceremony.name, guest: g.name, phone: g.phone, link: `${origin}/invite/${c.id}-${g.id}` })));
+
+const HEADERS = ["Invited by", "Graduate", "Graduation date", "Ceremony", "Guest", "Phone", "Invitation link"];
+const toCells = (r: GuestRow) => [r.creator, r.graduate, r.date, r.ceremony, r.guest, r.phone, r.link];
+const sheetName = (name: string, index: number) => (name.replace(/[\\/?*[\]:]/g, " ").slice(0, 28) || "Group") + (index ? ` ${index + 1}` : "");
+
+// One workbook: a sheet per group plus an "All guests" sheet when there are several groups. Phones stay text.
+export function downloadExcel(groups: { name: string; rows: GuestRow[] }[], filename: string) {
+  const book = XLSX.utils.book_new();
+  const addSheet = (name: string, rows: GuestRow[]) => {
+    const sheet = XLSX.utils.aoa_to_sheet([HEADERS, ...rows.map(toCells)]);
+    sheet["!cols"] = [26, 24, 14, 26, 24, 14, 60].map((wch) => ({ wch }));
+    XLSX.utils.book_append_sheet(book, sheet, name);
+  };
+  if (groups.length > 1) addSheet("All guests", groups.flatMap((g) => g.rows));
+  groups.forEach((g, i) => addSheet(sheetName(g.name, i), g.rows));
+  XLSX.writeFile(book, filename.endsWith(".xlsx") ? filename : `${filename}.xlsx`);
+}
+
+const escapeHtml = (v: string) => v.replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch] as string));
+
+// Opens a print-ready page with one table per group; the browser's print dialog saves it as PDF.
+export function printGuestPdf(title: string, groups: { name: string; rows: GuestRow[] }[]): boolean {
+  const total = groups.reduce((n, g) => n + g.rows.length, 0);
+  const table = (rows: GuestRow[]) => `<table><thead><tr>${HEADERS.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.map((r) => `<tr>${toCells(r).map((c) => `<td>${escapeHtml(String(c ?? ""))}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8" /><title>${escapeHtml(title)}</title><style>
+    body { font-family: 'DM Sans', system-ui, sans-serif; color: #263334; margin: 32px; }
+    h1 { font-family: 'Playfair Display', Georgia, serif; font-size: 26px; margin: 0 0 4px; } h2 { font-size: 15px; margin: 26px 0 8px; }
+    .sub { color: #89928e; font-size: 12px; margin-bottom: 18px; }
+    table { width: 100%; border-collapse: collapse; font-size: 11px; } th, td { border: 1px solid #d8ddd8; padding: 6px 8px; text-align: left; vertical-align: top; word-break: break-all; }
+    th { background: #f7f5f0; font-weight: 700; } @media print { body { margin: 0; } h2 { page-break-after: avoid; } }
+  </style></head><body><h1>${escapeHtml(title)}</h1><div class="sub">Generated ${new Date().toLocaleString("en-GB")} · ${groups.length} group${groups.length === 1 ? "" : "s"} · ${total} guests</div>
+  ${groups.map((g) => `<h2>${escapeHtml(g.name)} · ${g.rows.length} guest${g.rows.length === 1 ? "" : "s"}</h2>${table(g.rows)}`).join("")}</body></html>`;
+  const win = window.open("", "_blank");
+  if (!win) return false;
+  win.document.open(); win.document.write(html); win.document.close(); win.focus();
+  window.setTimeout(() => win.print(), 400);
+  return true;
+}

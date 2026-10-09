@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getEmailCredits, isMailConfigured, mailTransportName } from "./_core/mail.js";
 import { adminProcedure, router } from "./_core/trpc.js";
 import { isDbConnected } from "./db.js";
+import { Campaign } from "./models/campaign.js";
 import { OtpRequest } from "./models/otpRequest.js";
 import { getSettings } from "./models/setting.js";
 import { Template } from "./models/template.js";
@@ -14,6 +15,13 @@ function requireDb() {
 
 // Everything here is admin-only (adminProcedure) and backs the /admin panel.
 export const adminRouter = router({
+  // Every created invitation with its full guest list, newest first, for the admin's grouped view and exports.
+  campaigns: adminProcedure.query(async () => {
+    requireDb();
+    const docs = await Campaign.find().sort({ created_at: -1 });
+    return docs.map((doc) => doc.toOwner());
+  }),
+
   stats: adminProcedure.query(async () => {
     requireDb();
     const [users, templatesActive, byStatus, distinctEmails] = await Promise.all([

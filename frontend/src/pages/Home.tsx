@@ -54,10 +54,22 @@ function useTemplates(includeHidden = false): TemplateItem[] {
 // Every invitee gets a unique id so a guest link can be matched exactly.
 const createInvitee = () => ({ id: crypto.randomUUID(), name: "", phone: "" });
 
-// A verified email gets a 24h token so the creator can list their own invitations with phone numbers.
+// A verified email gets a 24h token, kept in localStorage so returning creators are not asked for a new code.
 const TOKEN_KEY = "gradinvite-creator-token";
-const setCreatorToken = (token?: string) => { if (!token) return; try { sessionStorage.setItem(TOKEN_KEY, token); } catch { /* storage unavailable */ } };
-const getCreatorToken = () => { try { return sessionStorage.getItem(TOKEN_KEY) ?? ""; } catch { return ""; } };
+type CreatorSession = { token: string; email: string };
+const setCreatorToken = (token?: string) => { if (!token) return; try { localStorage.setItem(TOKEN_KEY, token); } catch { /* storage unavailable */ } };
+const clearCreatorSession = () => { try { localStorage.removeItem(TOKEN_KEY); } catch { /* nothing to clear */ } };
+// Reads the email and expiry from the token payload, so an expired token is ignored without a server call.
+const getCreatorSession = (): CreatorSession | null => {
+  try {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return null;
+    const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    if (!payload.email || (payload.exp && payload.exp * 1000 < Date.now())) return null;
+    return { token, email: String(payload.email) };
+  } catch { return null; }
+};
+const getCreatorToken = () => getCreatorSession()?.token ?? "";
 
 function saveLocal(key: string, value: unknown) {
   try {
@@ -284,8 +296,10 @@ function CreatorPage({ initialTemplate }: { initialTemplate?: string }) {
   const [, navigate] = useLocation();
   const templates = useTemplates();
   const [templateId, setTemplateId] = useState(initialTemplate || templates[0].id);
-  const [email, setEmail] = useState("");
-  const [verified, setVerified] = useState(false);
+  const session = getCreatorSession();
+  const [email, setEmail] = useState(session?.email ?? "");
+  const [verified, setVerified] = useState(Boolean(session));
+  const [chosen, setChosen] = useState(Boolean(session && initialTemplate));
   const template = templates.find((item) => item.id === templateId) || templates[0];
   // On narrow screens the email panel sits below the templates, so a tap scrolls to it and focuses the email field.
   const pickTemplate = (id: string) => {
@@ -295,7 +309,7 @@ function CreatorPage({ initialTemplate }: { initialTemplate?: string }) {
     panel?.scrollIntoView({ behavior: "smooth", block: "start" });
     window.setTimeout(() => panel?.querySelector<HTMLInputElement>("input[type=email]")?.focus({ preventScroll: true }), 450);
   };
-  return <div className="creator-page"><header className="minimal-nav"><Link href="/" className="brand-lockup"><span className="brand-mark"><Sparkles size={15} /></span><span>grad<span>invite</span></span></Link><span className="minimal-label">Create an invitation</span></header>{!verified ? <div className="creator-auth-wrap"><div className="template-pick-side"><span className="preview-label">START WITH A STYLE</span><h1>A little look<br /><em>goes a long way.</em></h1><div className="creator-template-list">{templates.map((item) => <TemplateMiniCard key={item.id} template={item} selected={item.id === templateId} onClick={() => pickTemplate(item.id)} />)}</div></div><OtpStep email={email} setEmail={setEmail} templateId={templateId} onVerified={() => setVerified(true)} onBack={() => navigate("/")} /></div> : <CreationForm email={email} template={template} onBack={() => setVerified(false)} onDone={(campaign) => navigate(`/created/${campaign.id}`)} />}</div>;
+  return <div className="creator-page"><header className="minimal-nav"><Link href="/" className="brand-lockup"><span className="brand-mark"><Sparkles size={15} /></span><span>grad<span>invite</span></span></Link><span className="minimal-label">Create an invitation</span></header>{!(verified && chosen) ? <div className="creator-auth-wrap"><div className="template-pick-side"><span className="preview-label">START WITH A STYLE</span><h1>A little look<br /><em>goes a long way.</em></h1><div className="creator-template-list">{templates.map((item) => <TemplateMiniCard key={item.id} template={item} selected={item.id === templateId} onClick={() => pickTemplate(item.id)} />)}</div></div>{verified ? <div className="auth-panel" id="otp-panel"><button className="back-button" onClick={() => navigate("/")}><ChevronLeft size={16} /> Home</button><div className="auth-icon"><Check size={22} /></div><Badge className="eyebrow">VERIFIED</Badge><h2>Welcome back.</h2><p>You are verified as <strong>{email}</strong>. Pick a style and continue, no new code needed.</p><Button className="primary-button full-button" onClick={() => setChosen(true)}>Continue with {template.name} <ArrowRight size={16} /></Button><button className="resend-button" onClick={() => navigate("/view")}>View my creations</button><button className="resend-button" onClick={() => { clearCreatorSession(); setVerified(false); setChosen(false); setEmail(""); }}>Use a different email</button></div> : <OtpStep email={email} setEmail={setEmail} templateId={templateId} onVerified={() => { setVerified(true); setChosen(true); }} onBack={() => navigate("/")} />}</div> : <CreationForm email={email} template={template} onBack={() => setChosen(false)} onDone={(campaign) => navigate(`/created/${campaign.id}`)} />}</div>;
 }
 
 type Invitee = Campaign["invitees"][number];
@@ -406,9 +420,11 @@ function PublicInvite({ inviteId }: { inviteId: string }) {
 
 function ViewCreations() {
   const [, navigate] = useLocation();
-  const [email, setEmail] = useState(""); const [otp, setOtp] = useState(""); const [sent, setSent] = useState(false); const [error, setError] = useState("");
-  const [token, setToken] = useState(getCreatorToken());
-  const [unlocked, setUnlocked] = useState(Boolean(getCreatorToken()));
+  const session = getCreatorSession();
+  const [email, setEmail] = useState(session?.email ?? ""); const [otp, setOtp] = useState(""); const [sent, setSent] = useState(false); const [error, setError] = useState("");
+  const [token, setToken] = useState(session?.token ?? "");
+  const [unlocked, setUnlocked] = useState(Boolean(session));
+  const switchEmail = () => { clearCreatorSession(); setToken(""); setUnlocked(false); setSent(false); setOtp(""); setEmail(""); };
   // The server list is the source of truth; invitations cached in this browser fill in if the server is unreachable.
   const mine = trpc.campaigns.listMine.useQuery({ token }, { enabled: unlocked && Boolean(token), retry: false });
   const localMine = getLocal<Campaign[]>("gradinvite-campaigns", []).filter((item) => !email || item.email.toLowerCase() === email.toLowerCase());
@@ -426,7 +442,7 @@ function ViewCreations() {
   return <div className="simple-page"><header className="minimal-nav"><Link href="/" className="brand-lockup"><span className="brand-mark"><Sparkles size={15} /></span><span>grad<span>invite</span></span></Link><button className="back-button" onClick={() => navigate("/")}><ChevronLeft size={16} /> Home</button></header><main className="view-main"><div className="view-heading"><Badge className="eyebrow">YOUR SPACE</Badge><h1>Welcome back<br /><em>to your creations.</em></h1><p>{unlocked ? "Every invitation you sent, with each guest, their phone number and their private link." : "Enter the email you used before. We’ll send a one-time code so you can pick up where you left off."}</p></div>
     {!unlocked ? <div className="view-auth"><Mail size={21} /><label>Email address</label><Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" type="email" />{!sent ? <Button className="primary-button full-button" onClick={request} disabled={requestMutation.isPending}>{requestMutation.isPending ? "Sending" : "Send me a code"} <ArrowRight size={16} /></Button> : <><div className="otp-sent"><Check size={15} /> Code sent to {email}</div><Input value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="6-digit code" inputMode="numeric" autoFocus /><Button className="primary-button full-button" onClick={verify} disabled={verifyMutation.isPending}>{verifyMutation.isPending ? "Checking" : "View my creations"} <ArrowRight size={16} /></Button></>}{error && <div className="form-error">{error}</div>}</div>
     : mine.isLoading ? <div className="empty-screen" style={{ minHeight: 200 }}><Sparkles size={25} /><h2>Loading your invitations</h2></div>
-    : <div className="my-campaigns"><div className="campaigns-top"><strong>{campaigns.length} invitation{campaigns.length === 1 ? "" : "s"} · {guestCount} guest{guestCount === 1 ? "" : "s"}</strong><div className="campaigns-actions"><Button className="primary-button" onClick={() => downloadGuestList(campaigns)} disabled={guestCount === 0}><Download size={15} /> Download list</Button><Button className="primary-button" onClick={() => navigate("/create")}>New invitation <ArrowRight size={15} /></Button></div></div>
+    : <div className="my-campaigns"><div className="campaigns-top"><strong>{campaigns.length} invitation{campaigns.length === 1 ? "" : "s"} · {guestCount} guest{guestCount === 1 ? "" : "s"}</strong><div className="campaigns-actions"><Button className="primary-button" onClick={() => downloadGuestList(campaigns)} disabled={guestCount === 0}><Download size={15} /> Download list</Button><Button className="primary-button" onClick={() => navigate("/create")}>New invitation <ArrowRight size={15} /></Button></div></div>{email && <p className="form-intro" style={{ marginTop: 12 }}>Signed in as {email}. <button type="button" className="resend-button" style={{ display: "inline", margin: 0 }} onClick={switchEmail}>Use a different email</button></p>}
       {mine.error && <div className="form-error">{mine.error.message} Showing what is saved on this device.</div>}
       {campaigns.length === 0 && <p className="form-intro">No invitations were found for this email yet.</p>}
       {campaigns.map((campaign) => <div className="campaign-block" key={campaign.id}><div className="campaign-row"><div className={`campaign-swatch ${campaign.templateId}`} /><div><strong>{campaign.graduate.name}</strong><span>{campaign.invitees.length} guest{campaign.invitees.length === 1 ? "" : "s"} · {formatDate(campaign.graduate.date)} · {campaign.ceremony.name}</span></div><button onClick={() => navigate(`/created/${campaign.id}`)} aria-label="Open sharing page"><ArrowRight size={17} /></button></div>

@@ -1,13 +1,14 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { ArrowRight, Check, ExternalLink, Gift, KeyRound, LockKeyhole, LogOut, Mail, Settings, Sparkles, Users } from "lucide-react";
+import { ArrowRight, Check, ExternalLink, Gift, KeyRound, LockKeyhole, LogOut, Mail, FileSpreadsheet, FileText, Link2, Settings, Sparkles, Users } from "lucide-react";
 import { toast } from "@/lib/toast";
+import { copyText, downloadExcel, guestRows, printGuestPdf, type GuestRow } from "@/lib/share";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 
-type Tab = "overview" | "templates" | "users" | "otp" | "settings";
+type Tab = "overview" | "templates" | "users" | "invitations" | "otp" | "settings";
 
 type TemplateItem = {
   id: string;
@@ -158,6 +159,44 @@ function UsersPanel() {
   );
 }
 
+type AdminCampaign = { id: string; email: string; templateId: string; graduate: { name: string; date: string }; ceremony: { name: string }; invitees: { id: string; name: string; phone: string }[]; createdAt: string };
+
+// Every invitation grouped by the email that created it, with Excel and PDF exports per group or for everything.
+function InvitationsPanel() {
+  const query = trpc.admin.campaigns.useQuery(undefined, { retry: false });
+  const campaigns = (query.data ?? []) as AdminCampaign[];
+  const groups = Array.from(campaigns.reduce((map, c) => { map.set(c.email, [...(map.get(c.email) ?? []), c]); return map; }, new Map<string, AdminCampaign[]>()), ([email, list]) => ({ email, list, rows: guestRows(list) }));
+  const guestTotal = groups.reduce((n, g) => n + g.rows.length, 0);
+  const stamp = new Date().toISOString().slice(0, 10);
+  const exportExcel = (selection: { name: string; rows: GuestRow[] }[], file: string) => { if (!selection.some((g) => g.rows.length)) { toast.error("No guests to export"); return; } downloadExcel(selection, file); toast.success("Excel file downloaded"); };
+  const exportPdf = (title: string, selection: { name: string; rows: GuestRow[] }[]) => { if (!selection.some((g) => g.rows.length)) { toast.error("No guests to export"); return; } if (!printGuestPdf(title, selection)) toast.error("Pop-up blocked — allow pop-ups to export PDF"); };
+  const copyLink = async (link: string) => { if (await copyText(link)) toast.success("Invitation link copied"); else toast.error("Could not copy the link"); };
+  const btn = { padding: "6px 12px", fontSize: "11px" } as const;
+  return (
+    <>
+      <section className="admin-card">
+        <div className="admin-card-head"><div><span className="card-eyebrow">ALL GUESTS</span><h2>{campaigns.length} invitation{campaigns.length === 1 ? "" : "s"} · {guestTotal} guest{guestTotal === 1 ? "" : "s"} · {groups.length} creator{groups.length === 1 ? "" : "s"}</h2></div><div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}><Button className="secondary-button" style={btn} onClick={() => exportExcel(groups.map((g) => ({ name: g.email, rows: g.rows })), `gradinvite-all-guests-${stamp}`)} disabled={query.isLoading}><FileSpreadsheet size={14} /> Excel, all groups</Button><Button className="secondary-button" style={btn} onClick={() => exportPdf("GradInvite guest list", groups.map((g) => ({ name: g.email, rows: g.rows })))} disabled={query.isLoading}><FileText size={14} /> PDF, all groups</Button></div></div>
+        {query.error && <p className="muted">{query.error.message}</p>}
+        {!query.isLoading && campaigns.length === 0 && <p className="muted">No invitations have been created yet.</p>}
+      </section>
+      {groups.map((group) => (
+        <section className="admin-card" key={group.email}>
+          <div className="admin-card-head"><div><span className="card-eyebrow">INVITED BY</span><h2>{group.email}</h2><p className="muted" style={{ margin: "4px 0 0", fontSize: "11px" }}>{group.list.length} invitation{group.list.length === 1 ? "" : "s"} · {group.rows.length} guest{group.rows.length === 1 ? "" : "s"}</p></div><div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}><Button className="secondary-button" style={btn} onClick={() => exportExcel([{ name: group.email, rows: group.rows }], `gradinvite-${group.email.replace(/[^a-z0-9]+/gi, "-")}-${stamp}`)}><FileSpreadsheet size={14} /> Excel</Button><Button className="secondary-button" style={btn} onClick={() => exportPdf(`Guests invited by ${group.email}`, [{ name: group.email, rows: group.rows }])}><FileText size={14} /> PDF</Button></div></div>
+          {group.list.map((campaign) => (
+            <div key={campaign.id} style={{ marginTop: "14px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "10px", flexWrap: "wrap" }}><strong>{campaign.graduate.name}</strong><span className="muted" style={{ fontSize: "11px" }}>{campaign.graduate.date} · {campaign.ceremony.name} · {campaign.templateId} · created {formatWhen(campaign.createdAt)}</span></div>
+              <table className="admin-table">
+                <thead><tr><th>#</th><th>GUEST</th><th>PHONE</th><th>LINK</th></tr></thead>
+                <tbody>{campaign.invitees.map((g, i) => { const link = `${window.location.origin}/invite/${campaign.id}-${g.id}`; return <tr key={g.id}><td>{i + 1}</td><td>{g.name || "Guest"}</td><td>{g.phone || "—"}</td><td><button className="small-link" onClick={() => copyLink(link)}><Link2 size={13} /> Copy</button> <a className="small-link" href={link} target="_blank" rel="noreferrer">Open</a></td></tr>; })}</tbody>
+              </table>
+            </div>
+          ))}
+        </section>
+      ))}
+    </>
+  );
+}
+
 function OtpPanel() {
   const people = trpc.admin.otpEmails.useQuery(undefined, { retry: false });
   const requests = trpc.admin.otpRequests.useQuery({ limit: 500 }, { retry: false });
@@ -262,6 +301,7 @@ const TABS: { key: Tab; label: string; icon: ReactNode; title: string; intro: st
   { key: "overview", label: "Overview", icon: <Sparkles size={16} />, title: "Here is what is happening.", intro: "A live view of accounts, code requests and email delivery." },
   { key: "templates", label: "Templates", icon: <Gift size={16} />, title: "Templates", intro: "Edit what visitors see when they pick a style." },
   { key: "users", label: "Users", icon: <Users size={16} />, title: "Users", intro: "Everyone with a sign-in account." },
+  { key: "invitations", label: "Invitations", icon: <Mail size={16} />, title: "Invitations", intro: "Every guest list, grouped by the person who sent the invitations." },
   { key: "otp", label: "Code requests", icon: <KeyRound size={16} />, title: "Code requests", intro: "Emails that used the templates and received one-time codes." },
   { key: "settings", label: "Settings", icon: <Settings size={16} />, title: "Settings", intro: "Control one-time codes and email delivery." },
 ];
@@ -292,6 +332,7 @@ export default function Admin() {
         {tab === "overview" && <Overview onGo={setTab} />}
         {tab === "templates" && <TemplatesPanel />}
         {tab === "users" && <UsersPanel />}
+        {tab === "invitations" && <InvitationsPanel />}
         {tab === "otp" && <OtpPanel />}
         {tab === "settings" && <SettingsPanel />}
       </main>
