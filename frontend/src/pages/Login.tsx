@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { Link, useLocation } from "wouter";
 import { ArrowRight, ChevronLeft, LockKeyhole, Sparkles } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
+import { playSound } from "@/lib/sounds";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,8 +29,10 @@ export default function Login() {
     const explicitNext = next.startsWith("/") && !next.startsWith("/login") && next !== "/";
     navigate(explicitNext ? next : data.user.role === "admin" ? "/admin" : "/");
   };
-  const login = trpc.auth.login.useMutation({ onSuccess: finish, onError: (e) => setError(e.message) });
-  const register = trpc.auth.register.useMutation({ onSuccess: finish, onError: (e) => setError(e.message) });
+  // A rejected sign-in or registration plays the error sound; success is sounded by the welcome toast.
+  const fail = (e: { message: string }) => { playSound("error"); setError(e.message); };
+  const login = trpc.auth.login.useMutation({ onSuccess: finish, onError: fail });
+  const register = trpc.auth.register.useMutation({ onSuccess: finish, onError: fail });
   const pending = login.isPending || register.isPending;
 
   const submit = (event: FormEvent) => {

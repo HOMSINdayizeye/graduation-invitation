@@ -3,6 +3,10 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
+import { preloadSounds } from "./lib/sounds";
+
+// Fetch the feedback sounds once at startup so the first confirm or error plays instantly.
+preloadSounds();
 
 // Home resolves every path itself with useRoute (invite, created, admin, create, view).
 function App() {

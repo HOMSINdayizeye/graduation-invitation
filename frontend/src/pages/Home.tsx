@@ -25,7 +25,8 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
+import { playSound } from "@/lib/sounds";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -105,7 +106,7 @@ function PublicNav({ onCreate }: { onCreate: () => void }) {
         <a href="#how-it-works" onClick={() => setOpen(false)}>How it works</a>
         <button className="nav-text-button" onClick={() => { navigate("/view"); setOpen(false); }}>View my creations</button>
         {user?.role === "admin" && <Button className="nav-cta nav-dashboard" onClick={() => { navigate("/admin"); setOpen(false); }}><LockKeyhole size={14} /> Dashboard</Button>}
-        {user ? <button className="nav-text-button" onClick={() => { logout(); setOpen(false); }}>Sign out ({user.name.split(" ")[0]})</button> : <button className="nav-text-button" onClick={() => { navigate("/login"); setOpen(false); }}>Sign in</button>}
+        {user ? <button className="nav-text-button" onClick={() => { logout(); toast.success("Signed out"); setOpen(false); }}>Sign out ({user.name.split(" ")[0]})</button> : <button className="nav-text-button" onClick={() => { navigate("/login"); setOpen(false); }}>Sign in</button>}
         <Button className="nav-cta" onClick={() => { onCreate(); setOpen(false); }}>Create invitation <ArrowRight size={15} /></Button>
       </nav>
     </header>
@@ -213,16 +214,17 @@ function OtpStep({ email, setEmail, templateId, onVerified, onBack }: { email: s
       if (r.bypass) { toast.info(r.reason); onVerified(); return; }
       setSent(true); setOtp(""); toast.success(`Code sent to ${email}`, { description: `It expires in ${r.expiresInMinutes} minutes.` });
     },
-    onError: (e) => setError(e.message),
+    onError: (e) => { playSound("error"); setError(e.message); },
   });
-  const verify = trpc.otp.verify.useMutation({ onSuccess: () => onVerified(), onError: (e) => setError(e.message) });
+  // Email verified plays the confirm sound; a wrong or expired code plays the error sound.
+  const verify = trpc.otp.verify.useMutation({ onSuccess: () => { playSound("confirm"); onVerified(); }, onError: (e) => { playSound("error"); setError(e.message); } });
   const busy = request.isPending || verify.isPending;
   const requestOtp = () => {
-    if (!email.includes("@")) { setError("Enter a valid email address."); return; }
+    if (!email.includes("@")) { playSound("error"); setError("Enter a valid email address."); return; }
     setError(""); request.mutate({ email, templateId, purpose: "create" });
   };
   const verifyOtp = () => {
-    if (otp.length !== 6) { setError("Enter the 6-digit code from your email."); return; }
+    if (otp.length !== 6) { playSound("error"); setError("Enter the 6-digit code from your email."); return; }
     setError(""); verify.mutate({ email, code: otp });
   };
   return <div className="auth-panel"><button className="back-button" onClick={onBack}><ChevronLeft size={16} /> Back to templates</button><div className="auth-icon"><Mail size={22} /></div><Badge className="eyebrow">ONE-TIME ACCESS</Badge><h2>Let’s make it yours.</h2><p>Enter your email and we’ll send a one-time code. No password, no account setup.</p><label>Email address</label><Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" type="email" disabled={sent} />{!sent ? <Button className="primary-button full-button" onClick={requestOtp} disabled={busy}>{request.isPending ? "Sending" : "Send me a code"} <ArrowRight size={16} /></Button> : <><div className="otp-sent"><Check size={15} /> Code sent to {email}</div><label>Enter your code</label><Input value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="6-digit code" inputMode="numeric" autoFocus /><Button className="primary-button full-button" onClick={verifyOtp} disabled={busy}>{verify.isPending ? "Checking" : "Continue"} <ArrowRight size={16} /></Button><button className="resend-button" onClick={requestOtp} disabled={busy}>Resend code</button><button className="resend-button" onClick={() => { setSent(false); setOtp(""); setError(""); }}>Use a different email</button></>}{error && <div className="form-error">{error}</div>}</div>;
@@ -309,11 +311,11 @@ function ViewCreations() {
   };
   const requestMutation = trpc.otp.request.useMutation({
     onSuccess: (result) => { const r = result as OtpResult; if (r.bypass) { toast.info(r.reason); showCreations(); return; } setSent(true); toast.success(`Code sent to ${email}`); },
-    onError: (e) => setError(e.message),
+    onError: (e) => { playSound("error"); setError(e.message); },
   });
-  const verifyMutation = trpc.otp.verify.useMutation({ onSuccess: showCreations, onError: (e) => setError(e.message) });
-  const request = () => { if (!email.includes("@")) { setError("Enter the email you used to create your invitations."); return; } setError(""); requestMutation.mutate({ email, purpose: "view" }); };
-  const verify = () => { if (otp.length !== 6) { setError("Enter the 6-digit code from your email."); return; } setError(""); verifyMutation.mutate({ email, code: otp }); };
+  const verifyMutation = trpc.otp.verify.useMutation({ onSuccess: () => { playSound("confirm"); showCreations(); }, onError: (e) => { playSound("error"); setError(e.message); } });
+  const request = () => { if (!email.includes("@")) { playSound("error"); setError("Enter the email you used to create your invitations."); return; } setError(""); requestMutation.mutate({ email, purpose: "view" }); };
+  const verify = () => { if (otp.length !== 6) { playSound("error"); setError("Enter the 6-digit code from your email."); return; } setError(""); verifyMutation.mutate({ email, code: otp }); };
   return <div className="simple-page"><header className="minimal-nav"><Link href="/" className="brand-lockup"><span className="brand-mark"><Sparkles size={15} /></span><span>grad<span>invite</span></span></Link><button className="back-button" onClick={() => navigate("/")}><ChevronLeft size={16} /> Home</button></header><main className="view-main"><div className="view-heading"><Badge className="eyebrow">YOUR SPACE</Badge><h1>Welcome back<br /><em>to your creations.</em></h1><p>Enter the email you used before. We’ll send a one-time code so you can pick up where you left off.</p></div>{campaigns.length === 0 ? <div className="view-auth"><Mail size={21} /><label>Email address</label><Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />{!sent ? <Button className="primary-button full-button" onClick={request}>Send me a code <ArrowRight size={16} /></Button> : <><div className="otp-sent"><Check size={15} /> Code sent to {email}</div><Input value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="6-digit code" inputMode="numeric" /><Button className="primary-button full-button" onClick={verify}>View my creations <ArrowRight size={16} /></Button></>}{error && <div className="form-error">{error}</div>}</div> : <div className="my-campaigns"><div className="campaigns-top"><strong>{campaigns.length} creation{campaigns.length > 1 ? "s" : ""}</strong><Button className="primary-button" onClick={() => navigate("/create")}>New invitation <ArrowRight size={15} /></Button></div>{campaigns.map((campaign) => <div className="campaign-row" key={campaign.id}><div className={`campaign-swatch ${campaign.templateId}`} /><div><strong>{campaign.graduate.name}</strong><span>{campaign.invitees.length} individual invitations · {formatDate(campaign.graduate.date)}</span></div><button onClick={() => navigate(`/created/${campaign.id}`)}><ArrowRight size={17} /></button></div>)}</div>}</main></div>;
 }
 

@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { ArrowRight, Check, ExternalLink, Gift, KeyRound, LockKeyhole, LogOut, Mail, Settings, Sparkles, Users } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -282,7 +282,7 @@ export default function Admin() {
         <div className="admin-profile"><div className="admin-avatar">{firstName.charAt(0).toUpperCase()}</div><div><strong>{user?.name ?? "Admin"}</strong><span>{user?.email ?? "Administrator"}</span></div></div>
         <nav>{TABS.map((t) => <button key={t.key} className={tab === t.key ? "active" : ""} onClick={() => setTab(t.key)}>{t.icon} {t.label}</button>)}</nav>
         <button className="sidebar-bottom" onClick={() => navigate("/")}><ExternalLink size={15} /> View public site</button>
-        <button className="sidebar-bottom sidebar-signout" onClick={async () => { await logout(); navigate("/"); }}><LogOut size={15} /> Sign out</button>
+        <button className="sidebar-bottom sidebar-signout" onClick={async () => { await logout(); toast.success("Signed out"); navigate("/"); }}><LogOut size={15} /> Sign out</button>
       </aside>
       <main className="admin-main">
         <div className="admin-header">
