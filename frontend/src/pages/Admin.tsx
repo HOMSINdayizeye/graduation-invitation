@@ -54,7 +54,7 @@ function EmailServiceCard() {
         <div className="otp-code">{credits.isLoading ? "…" : data?.credits ?? "—"}</div>
         <div>
           <strong>Email credits remaining</strong>
-          <p>{data?.transport === "smtp" ? "Sending through Brevo SMTP relay. " : data?.transport === "api" ? "Sending through the Brevo API (subject to its authorised-IP list). " : "No email transport configured. "}{data?.error ? data.error : data?.plan ? `${data.plan} plan · account ${data.account ?? ""}` : "Add BREVO_API_KEY to show remaining credits here."}</p>
+          <p>{data?.transport === "api+smtp" ? "Sending through the Brevo API first, with SMTP relay as fallback. " : data?.transport === "smtp" ? "Sending through Brevo SMTP relay. " : data?.transport === "api" ? "Sending through the Brevo API (subject to its authorised-IP list). " : "No email transport configured. "}{data?.error ? data.error : data?.plan ? `${data.plan} plan · account ${data.account ?? ""}` : "Add BREVO_API_KEY to show remaining credits here."}</p>
         </div>
       </div>
       <Button className="secondary-button" disabled={!data?.configured || test.isPending} onClick={() => test.mutate()}>
