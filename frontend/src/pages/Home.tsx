@@ -340,7 +340,7 @@ export default function Home() {
   const [matchLogin] = useRoute("/login");
   const [location, navigate] = useLocation();
   const initialTemplate = new URLSearchParams(window.location.search).get("template") || undefined;
-  useEffect(() => { document.title = location.startsWith("/invite") ? "You’re invited · GradInvite" : "GradInvite — Graduation invitations, made personal"; }, [location]);
+  useEffect(() => { document.title = location.startsWith("/invite") ? "You’re invited · GradInvite" : "GradInvite Graduation invitations, made personal"; }, [location]);
   if (matchInvite && paramsInvite?.id) return <PublicInvite inviteId={paramsInvite.id} />;
   if (matchCreated && paramsCreated?.id) return <CreatedPage campaignId={paramsCreated.id} />;
   if (matchLogin) return <Login />;
