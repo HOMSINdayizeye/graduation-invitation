@@ -348,27 +348,36 @@ function InviteLetter({ campaign, guest }: { campaign: Campaign; guest?: Invitee
   return <article className="invite-letter"><span className="letter-seal" aria-hidden="true">{campaign.graduate.name.charAt(0)}</span><div className="letter-head"><span>{formatDate(campaign.graduate.date)}</span><span>You are invited</span></div><div className="invite-ornament">✦</div><span className="invite-kicker">YOU ARE INVITED TO CELEBRATE</span><h1>{campaign.graduate.name}</h1>{campaign.image ? <img className="invite-photo" src={campaign.image} alt={campaign.graduate.name} /> : <div className="invite-photo-placeholder">{campaign.graduate.name.charAt(0)}</div>}<p className="invite-guest">Dear {(guest?.name || "friend").replace(/^dears+/i, "")},</p><p className="invite-message">{campaign.graduate.message}</p><div className="invite-date-block"><span>{formatDate(campaign.graduate.date)}</span><i /> <span>2026</span></div><div className="invite-locations"><div><span className="location-label"><CalendarDays size={14} /> Graduation ceremony</span><strong>{campaign.ceremony.name}</strong><span>{campaign.ceremony.location}</span>{campaign.ceremony.directions && <a href={campaign.ceremony.directions} target="_blank" rel="noreferrer">View directions <ExternalLink size={12} /></a>}</div><div><span className="location-label"><Gift size={14} /> Celebration</span><strong>{campaign.celebration.name}</strong><span>{campaign.celebration.location}</span>{campaign.celebration.directions && <a href={campaign.celebration.directions} target="_blank" rel="noreferrer">View directions <ExternalLink size={12} /></a>}</div></div><div className="invite-footer-note">It would mean so much to have you there.</div><div className="letter-signature"><span>With love,</span><strong>{campaign.graduate.name}{campaign.graduate.nickname ? ` · ${campaign.graduate.nickname}` : ""}</strong></div></article>;
 }
 
-// Turns a rendered letter into a PNG and either downloads it or hands it to the phone's share sheet.
-async function exportLetter(node: HTMLElement, campaign: Campaign, guest: Invitee | undefined, share: boolean) {
-  try {
-    const blob = await letterToPng(node);
-    const name = `invitation-${slug(campaign.graduate.name)}-${slug(guest?.name || "guest")}.png`;
-    if (share && (await shareFile(blob, name, `Invitation from ${campaign.graduate.name}`))) { toast.success("Invitation letter shared"); return; }
-    downloadBlob(blob, name);
-    toast.success("Invitation letter downloaded");
-  } catch (e) { toast.error(e instanceof Error ? e.message : "Could not build the letter image"); }
+// Opens the letter preview for one guest. On the created page it is a row button; on the public page a top-bar button.
+function LetterActions({ campaign, guest, template, variant = "row" }: { campaign: Campaign; guest?: Invitee; template: TemplateItem; variant?: "row" | "bar" }) {
+  const [open, setOpen] = useState(false);
+  return <>
+    <button type="button" className={variant === "bar" ? "feedback-trigger" : undefined} onClick={() => setOpen(true)}><FileDown size={15} /> {variant === "bar" ? "Save letter" : "Letter"}</button>
+    {open && <LetterPreview campaign={campaign} guest={guest} template={template} onClose={() => setOpen(false)} />}
+  </>;
 }
 
-// Download or send one guest's letter from the created page; the letter is rendered offscreen for the snapshot.
-function LetterActions({ campaign, guest, template }: { campaign: Campaign; guest: Invitee; template: TemplateItem }) {
+// Renders the letter offscreen at a fixed 680px width, snapshots it to a PNG and shows it with Download, Send and Close.
+function LetterPreview({ campaign, guest, template, onClose }: { campaign: Campaign; guest?: Invitee; template: TemplateItem; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [busy, setBusy] = useState(false);
-  const run = async (share: boolean) => { if (!ref.current) return; setBusy(true); await exportLetter(ref.current, campaign, guest, share); setBusy(false); };
-  return <>
-    <button type="button" onClick={() => run(false)} disabled={busy}><FileDown size={15} /> {busy ? "Preparing" : "Letter"}</button>
-    {canShareFiles() && <button type="button" onClick={() => run(true)} disabled={busy}><Send size={15} /> Send letter</button>}
-    <div className="letter-offscreen" aria-hidden="true"><div ref={ref} className={`letter-shot public-invite ${template.className}`}><InviteLetter campaign={campaign} guest={guest} /></div></div>
-  </>;
+  const [blob, setBlob] = useState<Blob | null>(null);
+  const [url, setUrl] = useState("");
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let alive = true;
+    const timer = window.setTimeout(async () => {
+      if (!ref.current) return;
+      try { const image = await letterToPng(ref.current); if (!alive) return; setBlob(image); setUrl(URL.createObjectURL(image)); }
+      catch (e) { if (alive) setError(e instanceof Error ? e.message : "Could not build the letter image"); }
+    }, 200);
+    return () => { alive = false; window.clearTimeout(timer); };
+  }, [campaign, guest]);
+  useEffect(() => () => { if (url) URL.revokeObjectURL(url); }, [url]);
+  useEffect(() => { const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); }; window.addEventListener("keydown", onKey); return () => window.removeEventListener("keydown", onKey); }, [onClose]);
+  const name = `invitation-${slug(campaign.graduate.name)}-${slug(guest?.name || "guest")}.png`;
+  const download = () => { if (!blob) return; downloadBlob(blob, name); toast.success("Invitation letter downloaded"); };
+  const send = async () => { if (blob && (await shareFile(blob, name, `Invitation from ${campaign.graduate.name}`))) toast.success("Invitation letter shared"); };
+  return <div className="modal-backdrop" onClick={onClose}><div className="feedback-modal letter-modal" onClick={(e) => e.stopPropagation()}><button className="modal-close" onClick={onClose} aria-label="Close preview"><X size={18} /></button><Badge className="eyebrow">LETTER PREVIEW</Badge><h2>{guest?.name || "Your guest"}</h2>{error ? <p className="form-error">{error}</p> : url ? <img className="letter-preview-img" src={url} alt={`Invitation letter for ${guest?.name || "guest"}`} /> : <p className="letter-hint">Preparing the letter…</p>}{url && <p className="letter-hint">On a phone you can also press and hold the image to save it.</p>}<div className="qr-actions"><Button className="primary-button" onClick={download} disabled={!blob}><Download size={15} /> Download PNG</Button>{canShareFiles() && <Button className="secondary-button" onClick={send} disabled={!blob}><Send size={15} /> Send</Button>}<button type="button" className="text-link-button" onClick={onClose}><X size={14} /> Close</button></div><div className="letter-offscreen" aria-hidden="true"><div ref={ref} className={`letter-shot public-invite ${template.className}`}><InviteLetter campaign={campaign} guest={guest} /></div></div></div></div>;
 }
 
 // One CSV with every guest across the given invitations: graduate, date, guest, phone and private link.
@@ -415,7 +424,7 @@ function PublicInvite({ inviteId }: { inviteId: string }) {
   if (!campaign) return remote.isLoading ? <div className="empty-screen"><Sparkles size={25} /><h2>Opening your invitation</h2></div> : <EmptyState title="This invitation link is not valid or has been removed." action={() => window.location.assign("/")} />;
   const guest = campaign.invitees.find((item) => inviteId === `${campaign.id}-${item.id}`) || campaign.invitees[0];
   const template = templates.find((item) => item.id === campaign.templateId) || templates[0];
-  return <div className={`public-invite ${template.className}`}><div className="invite-topbar"><Link href="/" className="brand-lockup"><span className="brand-mark"><Sparkles size={14} /></span><span>grad<span>invite</span></span></Link><div className="invite-topbar-actions"><button onClick={() => { const node = document.querySelector<HTMLElement>(".invite-letter-wrap"); if (node) exportLetter(node, campaign, guest, false); }} className="feedback-trigger"><Download size={15} /> Save letter</button><button onClick={() => setFeedbackOpen(true)} className="feedback-trigger"><MessageCircle size={15} /> Leave feedback</button></div></div><main className="invite-main invite-letter-wrap"><InviteLetter campaign={campaign} guest={guest} /><p className="letter-brand">Sent with GradInvite</p></main>{feedbackOpen && <div className="modal-backdrop" onClick={() => setFeedbackOpen(false)}><div className="feedback-modal" onClick={(e) => e.stopPropagation()}><button className="modal-close" onClick={() => setFeedbackOpen(false)}><X size={18} /></button><Badge className="eyebrow">A QUICK NOTE</Badge><h2>How did this invitation feel?</h2><p>Your feedback helps us make every celebration a little better.</p><div className="stars">{[1,2,3,4,5].map((n) => <button key={n} className={rating >= n ? "star-active" : ""} onClick={() => setRating(n)}><Star size={24} fill="currentColor" /></button>)}</div><label>Phone number</label><div className="validate-row"><Input value={phone} onChange={(e) => { setPhone(e.target.value.replace(/\D/g, "").slice(0, 10)); setValidated(false); }} placeholder="079 000 0000" /><Button variant="outline" onClick={validatePhone}>{validated ? <Check size={15} /> : "Validate"}</Button></div><label>Your message</label><Textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={4} placeholder="Tell us what you loved…" /><Button className="primary-button full-button" onClick={submitFeedback}>Send feedback <Send size={15} /></Button></div></div>}</div>;
+  return <div className={`public-invite ${template.className}`}><div className="invite-topbar"><Link href="/" className="brand-lockup"><span className="brand-mark"><Sparkles size={14} /></span><span>grad<span>invite</span></span></Link><div className="invite-topbar-actions"><LetterActions campaign={campaign} guest={guest} template={template} variant="bar" /><button onClick={() => setFeedbackOpen(true)} className="feedback-trigger"><MessageCircle size={15} /> Leave feedback</button></div></div><main className="invite-main invite-letter-wrap"><InviteLetter campaign={campaign} guest={guest} /><p className="letter-brand">Sent with GradInvite</p></main>{feedbackOpen && <div className="modal-backdrop" onClick={() => setFeedbackOpen(false)}><div className="feedback-modal" onClick={(e) => e.stopPropagation()}><button className="modal-close" onClick={() => setFeedbackOpen(false)}><X size={18} /></button><Badge className="eyebrow">A QUICK NOTE</Badge><h2>How did this invitation feel?</h2><p>Your feedback helps us make every celebration a little better.</p><div className="stars">{[1,2,3,4,5].map((n) => <button key={n} className={rating >= n ? "star-active" : ""} onClick={() => setRating(n)}><Star size={24} fill="currentColor" /></button>)}</div><label>Phone number</label><div className="validate-row"><Input value={phone} onChange={(e) => { setPhone(e.target.value.replace(/\D/g, "").slice(0, 10)); setValidated(false); }} placeholder="079 000 0000" /><Button variant="outline" onClick={validatePhone}>{validated ? <Check size={15} /> : "Validate"}</Button></div><label>Your message</label><Textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={4} placeholder="Tell us what you loved…" /><Button className="primary-button full-button" onClick={submitFeedback}>Send feedback <Send size={15} /></Button></div></div>}</div>;
 }
 
 function ViewCreations() {

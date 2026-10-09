@@ -81,7 +81,7 @@ export async function letterToPng(node: HTMLElement): Promise<Blob> {
   const backgroundColor = page ? getComputedStyle(page).backgroundColor : "#ffffff";
   // Rendering waits on image decoding, which browsers pause in hidden tabs, so give up instead of hanging forever.
   const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Rendering took too long. Keep this tab visible and try again.")), 30000));
-  const dataUrl = await Promise.race([toPng(node, { pixelRatio: 2, cacheBust: true, backgroundColor }), timeout]);
+  const dataUrl = await Promise.race([toPng(node, { pixelRatio: 2, cacheBust: true, backgroundColor, width: node.offsetWidth, height: node.offsetHeight, style: { margin: "0", transform: "none" } }), timeout]);
   return (await fetch(dataUrl)).blob();
 }
 
