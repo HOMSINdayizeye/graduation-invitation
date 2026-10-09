@@ -1,5 +1,6 @@
 import { adminRouter } from "./adminRouter.js";
 import { authRouter } from "./authRouter.js";
+import { campaignsRouter } from "./campaignsRouter.js";
 import { otpRouter } from "./otpRouter.js";
 import { templatesRouter } from "./templatesRouter.js";
 import { systemRouter } from "./_core/systemRouter.js";
@@ -11,6 +12,7 @@ export const appRouter = router({
   auth: authRouter,
   templates: templatesRouter,
   otp: otpRouter,
+  campaigns: campaignsRouter,
   admin: adminRouter,
 });
 
