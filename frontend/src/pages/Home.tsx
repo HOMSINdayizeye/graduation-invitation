@@ -5,7 +5,6 @@ import {
   CalendarDays,
   Check,
   ChevronLeft,
-  Clipboard,
   Download,
   ExternalLink,
   FileDown,
@@ -24,16 +23,19 @@ import {
   Share2,
   ShieldCheck,
   Sparkles,
-  Star,
   Users,
   X,
+  AlertCircle,
+  CheckCircle2,
+  Eye,
+  KeyRound,
+  MessageSquare,
 } from "lucide-react";
 import { toast } from "@/lib/toast";
 import { canShare, canShareFiles, copyText, downloadBlob, downloadCsv, letterToPng, qrDataUrl, qrPosterBlob, shareFile, shareLink, shrinkImage, slug } from "@/lib/share";
 import { playSound } from "@/lib/sounds";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { Field, FormNotice, GiInput, GiModal, GiTextarea, Spinner, StarRating } from "@/components/forms";
 import { Badge } from "@/components/ui/badge";
 import { isValidRwandaMobile } from "@shared/gradinvite";
 import { DEFAULT_TEMPLATES } from "@shared/templates";
@@ -218,7 +220,7 @@ function HomePage({ onCreate }: { onCreate: (templateId?: string) => void }) {
 
         <section className="closing-section"><div className="closing-quote">“The best celebrations<br /><em>start with an invitation.”</em></div><div className="closing-side"><span className="closing-star">✦</span><p>Your graduation is a milestone. Let the invitation feel like one too.</p><Button className="primary-button" onClick={() => onCreate()}>Create yours <ArrowRight size={16} /></Button></div></section>
       </main>
-      <footer className="site-footer"><div className="brand-lockup"><span className="brand-mark"><Sparkles size={15} /></span><span>grad<span>invite</span></span></div><span>Made for the people who made it possible.</span><span>© 2026 GradInvite</span></footer>
+      <footer className="site-footer"><div className="brand-lockup"><span className="brand-mark"><Sparkles size={15} /></span><span>grad<span>invite</span></span></div><span>Made for the people who made it possible.</span><span>© 2026 Graduant-ntuma.invite</span></footer>
     </div>
   );
 }
@@ -248,7 +250,31 @@ function OtpStep({ email, setEmail, templateId, onVerified, onBack }: { email: s
     if (otp.length !== 6) { playSound("error"); setError("Enter the 6-digit code from your email."); return; }
     setError(""); verify.mutate({ email, code: otp });
   };
-  return <div className="auth-panel" id="otp-panel"><button className="back-button" onClick={onBack}><ChevronLeft size={16} /> Back to templates</button><div className="auth-icon"><Mail size={22} /></div><Badge className="eyebrow">ONE-TIME ACCESS</Badge><h2>Let’s make it yours.</h2><p>Enter your email and we’ll send a one-time code. No password, no account setup.</p><label>Email address</label><Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" type="email" disabled={sent} />{!sent ? <Button className="primary-button full-button" onClick={requestOtp} disabled={busy}>{request.isPending ? "Sending" : "Send me a code"} <ArrowRight size={16} /></Button> : <><div className="otp-sent"><Check size={15} /> Code sent to {email}</div><label>Enter your code</label><Input value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="6-digit code" inputMode="numeric" autoFocus /><Button className="primary-button full-button" onClick={verifyOtp} disabled={busy}>{verify.isPending ? "Checking" : "Continue"} <ArrowRight size={16} /></Button><button className="resend-button" onClick={requestOtp} disabled={busy}>Resend code</button><button className="resend-button" onClick={() => { setSent(false); setOtp(""); setError(""); }}>Use a different email</button></>}{error && <div className="form-error">{error}</div>}</div>;
+  return (
+    <form className="auth-panel gi-card" id="otp-panel" onSubmit={(e) => { e.preventDefault(); if (sent) verifyOtp(); else requestOtp(); }}>
+      <button type="button" className="back-button" onClick={onBack}><ChevronLeft size={16} /> Back to templates</button>
+      <div className="auth-icon"><Mail size={22} /></div>
+      <h2>Let’s make it yours.</h2>
+      <p>Enter your email and we’ll send a one-time code. No password, no account setup.</p>
+      <div className="gi-form">
+        <Field label="Email address" required icon={<Mail size={18} />} htmlFor="otp-email" error={!sent && error ? error : undefined}>
+          <GiInput id="otp-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" disabled={sent} />
+        </Field>
+        {!sent ? (
+          <button type="submit" className="gi-btn-primary" disabled={busy}>{request.isPending ? <><Spinner /> Sending</> : <>Send me a code <ArrowRight size={16} /></>}</button>
+        ) : (
+          <>
+            <FormNotice kind="success"><Check size={15} /> Code sent to {email}</FormNotice>
+            <Field label="Enter your code" required icon={<KeyRound size={18} />} htmlFor="otp-code" error={error || undefined} hint="6 digits, from the email we just sent.">
+              <GiInput id="otp-code" className="gi-code" value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="000000" inputMode="numeric" autoComplete="one-time-code" maxLength={6} autoFocus />
+            </Field>
+            <button type="submit" className="gi-btn-primary" disabled={busy}>{verify.isPending ? <><Spinner /> Checking</> : <>Continue <ArrowRight size={16} /></>}</button>
+            <div className="gi-links"><button type="button" className="gi-link" onClick={requestOtp} disabled={busy}>Resend code</button><button type="button" className="gi-link" onClick={() => { setSent(false); setOtp(""); setError(""); }}>Use a different email</button></div>
+          </>
+        )}
+      </div>
+    </form>
+  );
 }
 
 function CreationForm({ email, template, onDone, onBack }: { email: string; template: TemplateItem; onDone: (campaign: Campaign) => void; onBack: () => void }) {
@@ -260,17 +286,26 @@ function CreationForm({ email, template, onDone, onBack }: { email: string; temp
   const [delivery, setDelivery] = useState<"link" | "qr" | "both">("both");
   const [image, setImage] = useState<string | null>(null);
   const [error, setError] = useState("");
-  const canContinueDetails = graduate.name.trim() && ceremony.name.trim() && celebration.name.trim();
+  const [touched, setTouched] = useState(false);
   const addInvitee = () => setInvitees([...invitees, createInvitee()]);
   const updateInvitee = (id: string, field: "name" | "phone", value: string) => setInvitees(invitees.map((item) => item.id === id ? { ...item, [field]: value } : item));
   const removeInvitee = (id: string) => setInvitees(invitees.length === 1 ? invitees : invitees.filter((item) => item.id !== id));
+  // Per-field messages only appear after the first failed attempt, so a fresh form is not covered in red.
+  const detailErrors = {
+    name: touched && !graduate.name.trim() ? "The graduate’s name is required." : "",
+    phone: touched && graduate.phone && !isValidRwandaMobile(graduate.phone) ? "Use 10 digits starting with 072, 073, 078 or 079." : "",
+    ceremony: touched && !ceremony.name.trim() ? "Add the ceremony venue name." : "",
+    celebration: touched && !celebration.name.trim() ? "Add the celebration venue name." : "",
+  };
+  const inviteeError = (item: { name: string; phone: string }) => ({
+    name: touched && !item.name.trim() ? "Name is required." : "",
+    phone: touched && !isValidRwandaMobile(item.phone) ? "Use 10 digits starting with 072, 073, 078 or 079." : "",
+  });
   const goNext = () => {
     setError("");
-    if (step === 1 && !canContinueDetails) { setError("Add the graduate’s name and both venue names to continue."); return; }
-    if (step === 2) {
-      const valid = invitees.every((item) => item.name.trim() && isValidRwandaMobile(item.phone));
-      if (!valid) { setError("Every invitee needs a name and a valid Rwanda number beginning with 072, 073, 078 or 079."); return; }
-    }
+    if (step === 1 && (!graduate.name.trim() || !ceremony.name.trim() || !celebration.name.trim() || (graduate.phone && !isValidRwandaMobile(graduate.phone)))) { setTouched(true); playSound("error"); setError("Fill in the highlighted fields to continue."); return; }
+    if (step === 2 && !invitees.every((item) => item.name.trim() && isValidRwandaMobile(item.phone))) { setTouched(true); playSound("error"); setError("Every invitee needs a name and a valid Rwanda number beginning with 072, 073, 078 or 079."); return; }
+    setTouched(false);
     setStep(step + 1);
   };
   const fileChange = (file?: File) => { if (!file) return; shrinkImage(file).then(setImage).catch(() => toast.error("That image could not be used")); };
@@ -283,11 +318,91 @@ function CreationForm({ email, template, onDone, onBack }: { email: string; temp
     setError("");
     save.mutate({ id: `campaign-${crypto.randomUUID()}`, email, templateId: template.id, graduate, ceremony, celebration, invitees, delivery, image, createdAt: new Date().toISOString() });
   };
-  return <div className="creator-shell"><div className="creator-top"><button className="back-button" onClick={onBack}><ChevronLeft size={16} /> Back</button><div className="creator-progress"><span className={step >= 1 ? "active" : ""}>Details</span><i /><span className={step >= 2 ? "active" : ""}>Invitees</span><i /><span className={step >= 3 ? "active" : ""}>Share</span></div><span className="creator-email">{email}</span></div><div className="creator-body"><div className="creator-form"><Badge className="eyebrow">{step === 1 ? "YOUR GRADUATION" : step === 2 ? "YOUR GUEST LIST" : "READY TO SHARE"}</Badge>{step === 1 && <><h2>Set the scene.</h2><p className="form-intro">Start with the details your guests will want to remember.</p><div className="image-upload"><input id="graduate-image" type="file" accept="image/*" onChange={(e) => fileChange(e.target.files?.[0])} /><label htmlFor="graduate-image">{image ? <img src={image} alt="Graduate preview" /> : <><span className="upload-icon"><ImagePlus size={21} /></span><strong>Add a graduate photo</strong><small>JPG or PNG · optional</small></>}</label></div><div className="form-grid"><div className="field full"><label>Graduate’s full name *</label><Input value={graduate.name} onChange={(e) => setGraduate({ ...graduate, name: e.target.value })} placeholder="e.g. Aline Mukamana" /></div><div className="field"><label>Nickname</label><Input value={graduate.nickname} onChange={(e) => setGraduate({ ...graduate, nickname: e.target.value })} placeholder="What friends call you" /></div><div className="field"><label>Graduation date</label><Input type="date" value={graduate.date} onChange={(e) => setGraduate({ ...graduate, date: e.target.value })} /></div><div className="field"><label>Your phone</label><Input value={graduate.phone} onChange={(e) => setGraduate({ ...graduate, phone: e.target.value })} placeholder="07…" /></div><div className="field"><label>Your email</label><Input value={graduate.email} onChange={(e) => setGraduate({ ...graduate, email: e.target.value })} /></div><div className="field full"><label>Personal message</label><Textarea value={graduate.message} onChange={(e) => setGraduate({ ...graduate, message: e.target.value })} rows={3} /></div></div><div className="venue-grid"><VenueCard title="Graduation ceremony" icon={<CalendarDays size={16} />} value={ceremony} setValue={setCeremony} /><VenueCard title="Celebration venue" icon={<Gift size={16} />} value={celebration} setValue={setCelebration} /></div></>}{step === 2 && <><h2>Bring your people.</h2><p className="form-intro">Add everyone who should receive their own invitation. We’ll create one link per person.</p><div className="invitee-toolbar"><span><Users size={17} /> {invitees.length} invitation{invitees.length === 1 ? "" : "s"} so far</span><button onClick={addInvitee}><span>+</span> Add invitee</button></div><div className="invitee-list">{invitees.map((item, index) => <div className="invitee-row" key={item.id}><span className="invitee-index">{String(index + 1).padStart(2, "0")}</span><Input value={item.name} onChange={(e) => updateInvitee(item.id, "name", e.target.value)} placeholder="Invitee full name" /><div className="phone-input"><Phone size={14} /><Input value={item.phone} onChange={(e) => updateInvitee(item.id, "phone", e.target.value.replace(/\D/g, "").slice(0, 10))} placeholder="079…" /></div><button className="icon-button" onClick={() => removeInvitee(item.id)} aria-label="Remove invitee"><X size={16} /></button></div>)}</div><div className="privacy-note"><ShieldCheck size={17} /><span>Each guest gets a private invitation link. You can choose whether their name appears on it.</span></div></>}{step === 3 && <><h2>Choose how to share.</h2><p className="form-intro">Every invitee gets their own invitation. Choose what you’d like to send them.</p><div className="delivery-options">{(["link", "qr", "both"] as const).map((option) => <button key={option} className={`delivery-card ${delivery === option ? "selected" : ""}`} onClick={() => setDelivery(option)}><div className="delivery-icon">{option === "link" ? <Link2 size={20} /> : option === "qr" ? <QrCode size={20} /> : <><Link2 size={15} /><QrCode size={15} /></>}</div><strong>{option === "link" ? "Clickable link" : option === "qr" ? "QR code" : "Both"}</strong><span>{option === "link" ? "Easy to send by WhatsApp or email" : option === "qr" ? "Perfect for printed cards" : "The most flexible option"}</span>{delivery === option && <span className="delivery-check"><Check size={13} /></span>}</button>)}</div><div className="share-summary"><div className="summary-icon"><Send size={18} /></div><div><strong>Ready to create {invitees.length} invitation{invitees.length === 1 ? "" : "s"}</strong><p>Each one will include {graduate.name || "your graduate"}’s details and the two venue locations.</p></div></div></>}{error && <div className="form-error">{error}</div>}<div className="form-actions"><Button className="primary-button" onClick={step < 3 ? goNext : createCampaign} disabled={save.isPending}>{step < 3 ? <>Continue <ArrowRight size={16} /></> : save.isPending ? <>Saving</> : <>Create invitations <Sparkles size={16} /></>}</Button>{step > 1 && <button className="back-button" onClick={() => setStep(step - 1)}>Back</button>}</div></div><div className="live-preview"><span className="preview-label">LIVE PREVIEW</span><div className={`preview-card ${template.className}`}><div className="preview-top"><span>GRADUATION</span><span>{graduate.date ? graduate.date.replaceAll("-", ".") : "12.12.26"}</span></div>{image ? <img className="preview-image" src={image} alt="" /> : <label htmlFor="graduate-image" className="preview-initial" title="Add a graduate photo">{graduate.name ? graduate.name.charAt(0).toUpperCase() : template.monogram}<small>Add photo</small></label>}<div className="preview-kicker">A NEW CHAPTER</div><div className="preview-name">{graduate.name || template.sampleName}</div><div className="preview-line" /><p>{graduate.message || "A day worth remembering."}</p><div className="preview-date"><CalendarDays size={13} /> {formatDate(graduate.date)}</div><div className="preview-venue"><MapPin size={13} /> {ceremony.name || "Ceremony venue"}</div><div className="preview-footer">YOU ARE INVITED</div></div><p className="preview-caption">Your guests will see this invitation when they open their personal link or scan their QR code.</p></div></div></div>;
+  const digits = (value: string) => value.replace(/\D/g, "").slice(0, 10);
+  return (
+    <div className="creator-shell">
+      <div className="creator-top"><button className="back-button" onClick={onBack}><ChevronLeft size={16} /> Back</button><div className="creator-progress"><span className={step >= 1 ? "active" : ""}>Details</span><i /><span className={step >= 2 ? "active" : ""}>Invitees</span><i /><span className={step >= 3 ? "active" : ""}>Share</span></div><span className="creator-email">{email}</span></div>
+      <div className="creator-body">
+        <form className="creator-form gi-card" onSubmit={(e) => { e.preventDefault(); if (step < 3) goNext(); else createCampaign(); }}>
+          <Badge className="eyebrow">{step === 1 ? "YOUR GRADUATION" : step === 2 ? "YOUR GUEST LIST" : "READY TO SHARE"}</Badge>
+          {step === 1 && (
+            <>
+              <h2>Set the scene.</h2>
+              <p className="form-intro">Start with the details your guests will want to remember.</p>
+              <div className="image-upload"><input id="graduate-image" type="file" accept="image/*" onChange={(e) => fileChange(e.target.files?.[0])} /><label htmlFor="graduate-image">{image ? <img src={image} alt="Graduate preview" /> : <><span className="upload-icon"><ImagePlus size={21} /></span><strong>Add a graduate photo</strong><small>JPG or PNG · optional</small></>}</label></div>
+              <div className="gi-form">
+                <Field label="Graduate’s full name" required icon={<GraduationCap size={18} />} htmlFor="grad-name" error={detailErrors.name}>
+                  <GiInput id="grad-name" value={graduate.name} onChange={(e) => setGraduate({ ...graduate, name: e.target.value })} placeholder="e.g. Aline Mukamana" autoComplete="name" />
+                </Field>
+                <div className="gi-grid-2">
+                  <Field label="Nickname" htmlFor="grad-nick"><GiInput id="grad-nick" value={graduate.nickname} onChange={(e) => setGraduate({ ...graduate, nickname: e.target.value })} placeholder="What friends call you" /></Field>
+                  <Field label="Graduation date" required icon={<CalendarDays size={18} />} htmlFor="grad-date"><GiInput id="grad-date" type="date" value={graduate.date} onChange={(e) => setGraduate({ ...graduate, date: e.target.value })} /></Field>
+                </div>
+                <div className="gi-grid-2">
+                  <Field label="Your phone" icon={<Phone size={18} />} htmlFor="grad-phone" error={detailErrors.phone}><GiInput id="grad-phone" type="tel" inputMode="tel" value={graduate.phone} onChange={(e) => setGraduate({ ...graduate, phone: digits(e.target.value) })} placeholder="078 000 0000" autoComplete="tel" /></Field>
+                  <Field label="Your email" icon={<Mail size={18} />} htmlFor="grad-email"><GiInput id="grad-email" type="email" value={graduate.email} onChange={(e) => setGraduate({ ...graduate, email: e.target.value })} placeholder="you@example.com" autoComplete="email" /></Field>
+                </div>
+                <Field label="Personal message" icon={<MessageSquare size={18} />} htmlFor="grad-message" hint={`${graduate.message.length}/300`}>
+                  <GiTextarea id="grad-message" value={graduate.message} onChange={(e) => setGraduate({ ...graduate, message: e.target.value.slice(0, 300) })} rows={3} placeholder="A few words for your guests" />
+                </Field>
+                <div className="gi-venues">
+                  <VenueCard title="Graduation ceremony" icon={<CalendarDays size={16} />} value={ceremony} setValue={setCeremony} error={detailErrors.ceremony} />
+                  <VenueCard title="Celebration venue" icon={<Gift size={16} />} value={celebration} setValue={setCelebration} error={detailErrors.celebration} />
+                </div>
+              </div>
+            </>
+          )}
+          {step === 2 && (
+            <>
+              <h2>Bring your people.</h2>
+              <p className="form-intro">Add everyone who should receive their own invitation. We’ll create one link per person.</p>
+              <div className="invitee-toolbar"><span><Users size={17} /> {invitees.length} invitation{invitees.length === 1 ? "" : "s"} so far</span><button type="button" onClick={addInvitee}><span>+</span> Add invitee</button></div>
+              <div className="gi-form">
+                {invitees.map((item, index) => { const err = inviteeError(item); return (
+                  <div className="gi-invitee" key={item.id}>
+                    <div className="gi-invitee-head"><span className="invitee-index">{String(index + 1).padStart(2, "0")}</span><strong>Invitee {index + 1}</strong>{invitees.length > 1 && <button type="button" className="gi-icon-btn" onClick={() => removeInvitee(item.id)} aria-label="Remove invitee"><X size={16} /></button>}</div>
+                    <div className="gi-grid-2">
+                      <Field label="Full name" required icon={<Users size={18} />} htmlFor={`inv-name-${item.id}`} error={err.name}><GiInput id={`inv-name-${item.id}`} value={item.name} onChange={(e) => updateInvitee(item.id, "name", e.target.value)} placeholder="Invitee full name" autoComplete="off" /></Field>
+                      <Field label="Phone" required icon={<Phone size={18} />} htmlFor={`inv-phone-${item.id}`} error={err.phone}><GiInput id={`inv-phone-${item.id}`} type="tel" inputMode="tel" value={item.phone} onChange={(e) => updateInvitee(item.id, "phone", digits(e.target.value))} placeholder="078 000 0000" autoComplete="off" /></Field>
+                    </div>
+                  </div>
+                ); })}
+              </div>
+              <div className="privacy-note"><ShieldCheck size={17} /><span>Each guest gets a private invitation link. You can choose whether their name appears on it.</span></div>
+            </>
+          )}
+          {step === 3 && (
+            <>
+              <h2>Choose how to share.</h2>
+              <p className="form-intro">Every invitee gets their own invitation. Choose what you’d like to send them.</p>
+              <div className="delivery-options">{(["link", "qr", "both"] as const).map((option) => <button type="button" key={option} className={`delivery-card ${delivery === option ? "selected" : ""}`} onClick={() => setDelivery(option)}><div className="delivery-icon">{option === "link" ? <Link2 size={20} /> : option === "qr" ? <QrCode size={20} /> : <><Link2 size={15} /><QrCode size={15} /></>}</div><strong>{option === "link" ? "Clickable link" : option === "qr" ? "QR code" : "Both"}</strong><span>{option === "link" ? "Easy to send by WhatsApp or email" : option === "qr" ? "Perfect for printed cards" : "The most flexible option"}</span>{delivery === option && <span className="delivery-check"><Check size={13} /></span>}</button>)}</div>
+              <div className="share-summary"><div className="summary-icon"><Send size={18} /></div><div><strong>Ready to create {invitees.length} invitation{invitees.length === 1 ? "" : "s"}</strong><p>Each one will include {graduate.name || "your graduate"}’s details and the two venue locations.</p></div></div>
+            </>
+          )}
+          {error && <FormNotice>{error}</FormNotice>}
+          <div className="gi-actions">
+            {step > 1 && <button type="button" className="gi-btn-outlined" onClick={() => { setTouched(false); setError(""); setStep(step - 1); }} disabled={save.isPending}>Back</button>}
+            <button type="submit" className="gi-btn-primary gi-grow" disabled={save.isPending}>{step < 3 ? <>Continue <ArrowRight size={16} /></> : save.isPending ? <><Spinner /> Saving</> : <>Create invitations <Sparkles size={16} /></>}</button>
+          </div>
+        </form>
+        <div className="live-preview"><span className="preview-label">LIVE PREVIEW</span><div className={`preview-card ${template.className}`}><div className="preview-top"><span>GRADUATION</span><span>{graduate.date ? graduate.date.replaceAll("-", ".") : "12.12.26"}</span></div>{image ? <img className="preview-image" src={image} alt="" /> : <label htmlFor="graduate-image" className="preview-initial" title="Add a graduate photo">{graduate.name ? graduate.name.charAt(0).toUpperCase() : template.monogram}<small>Add photo</small></label>}<div className="preview-kicker">A NEW CHAPTER</div><div className="preview-name">{graduate.name || template.sampleName}</div><div className="preview-line" /><p>{graduate.message || "A day worth remembering."}</p><div className="preview-date"><CalendarDays size={13} /> {formatDate(graduate.date)}</div><div className="preview-venue"><MapPin size={13} /> {ceremony.name || "Ceremony venue"}</div><div className="preview-footer">YOU ARE INVITED</div></div><p className="preview-caption">Your guests will see this invitation when they open their personal link or scan their QR code.</p></div>
+      </div>
+    </div>
+  );
 }
 
-function VenueCard({ title, icon, value, setValue }: { title: string; icon: ReactNode; value: { name: string; location: string; directions: string }; setValue: (v: { name: string; location: string; directions: string }) => void }) {
-  return <div className="venue-card"><div className="venue-card-title">{icon}<strong>{title}</strong></div><Input value={value.name} onChange={(e) => setValue({ ...value, name: e.target.value })} placeholder="Venue name" /><Input value={value.location} onChange={(e) => setValue({ ...value, location: e.target.value })} placeholder="Address or location" /><div className="venue-directions"><MapPin size={14} /><Input value={value.directions} onChange={(e) => setValue({ ...value, directions: e.target.value })} placeholder="Directions link (optional)" /></div></div>;
+function VenueCard({ title, icon, value, setValue, error }: { title: string; icon: ReactNode; value: { name: string; location: string; directions: string }; setValue: (v: { name: string; location: string; directions: string }) => void; error?: string }) {
+  const id = slug(title);
+  return (
+    <div className="venue-card gi-venue">
+      <div className="venue-card-title">{icon}<strong>{title}</strong></div>
+      <Field label="Venue name" required htmlFor={`${id}-name`} error={error}><GiInput id={`${id}-name`} value={value.name} onChange={(e) => setValue({ ...value, name: e.target.value })} placeholder="Venue name" /></Field>
+      <div className="gi-grid-2">
+        <Field label="Address" icon={<MapPin size={18} />} htmlFor={`${id}-location`}><GiInput id={`${id}-location`} value={value.location} onChange={(e) => setValue({ ...value, location: e.target.value })} placeholder="Address or location" /></Field>
+        <Field label="Directions link" icon={<Link2 size={18} />} htmlFor={`${id}-directions`}><GiInput id={`${id}-directions`} type="url" inputMode="url" value={value.directions} onChange={(e) => setValue({ ...value, directions: e.target.value })} placeholder="https://maps… (optional)" /></Field>
+      </div>
+    </div>
+  );
 }
 
 type Campaign = { id: string; email: string; templateId: string; graduate: { name: string; nickname: string; phone: string; email: string; date: string; message: string }; ceremony: { name: string; location: string; directions: string }; celebration: { name: string; location: string; directions: string }; invitees: { id: string; name: string; phone: string }[]; delivery: "link" | "qr" | "both"; image: string | null; createdAt: string };
@@ -407,6 +522,75 @@ const DEMO_CAMPAIGN: Campaign = { id: "demo", email: "", templateId: "terracotta
 // Guest ids are UUIDs, so the campaign id is everything before the final 36-character segment.
 const campaignIdFromInvite = (inviteId: string) => { const m = inviteId.match(/^(.*)-([0-9a-f-]{36})$/i); return m ? m[1] : inviteId; };
 
+type FeedbackStep = "rate" | "preview" | "done" | "failed";
+
+// Rate, preview, then send. The server mutation runs through the tRPC hook, so a failure is shown instead of hidden.
+function FeedbackModal({ inviteId, onClose }: { inviteId: string; onClose: () => void }) {
+  const [step, setStep] = useState<FeedbackStep>("rate");
+  const [rating, setRating] = useState(0);
+  const [phone, setPhone] = useState("");
+  const [message, setMessage] = useState("");
+  const [errors, setErrors] = useState<{ rating?: string; phone?: string; message?: string }>({});
+  const [failure, setFailure] = useState("");
+  const create = trpc.feedback.create.useMutation({
+    onSuccess: () => { playSound("confirm"); setStep("done"); },
+    onError: (e) => { playSound("error"); setFailure(e.message || "Your feedback could not be sent. Check your connection and try again."); setStep("failed"); },
+  });
+  const busy = create.isPending;
+  const validate = () => {
+    const next: typeof errors = {};
+    if (rating < 1) next.rating = "Tap a star to rate the invitation.";
+    if (!isValidRwandaMobile(phone)) next.phone = "Use 10 digits starting with 072, 073, 078 or 079.";
+    if (!message.trim()) next.message = "Write a short message.";
+    setErrors(next);
+    return Object.keys(next).length === 0;
+  };
+  const preview = () => { if (validate()) setStep("preview"); else playSound("error"); };
+  const submit = () => create.mutate({ invitationId: inviteId, rating, message: message.trim(), phone });
+  const title = step === "rate" ? "Share your feedback" : step === "preview" ? "Preview your feedback" : step === "done" ? "Thank you" : "Not sent";
+  return (
+    <GiModal title={title} onClose={onClose} busy={busy} footer={
+      step === "rate" ? <button type="button" className="gi-btn-primary" onClick={preview}><Eye size={16} /> Preview</button>
+      : step === "preview" ? <><button type="button" className="gi-btn-outlined" onClick={() => setStep("rate")} disabled={busy}>Edit</button><button type="button" className="gi-btn-primary gi-grow" onClick={submit} disabled={busy}>{busy ? <><Spinner /> Sending</> : <><CheckCircle2 size={16} /> Send feedback</>}</button></>
+      : step === "done" ? <button type="button" className="gi-btn-primary" onClick={onClose}>Done</button>
+      : <><button type="button" className="gi-btn-outlined" onClick={onClose}>Close</button><button type="button" className="gi-btn-primary gi-grow" onClick={() => setStep("preview")}>Try again</button></>
+    }>
+      {step === "rate" && (
+        <div className="gi-form">
+          <p className="gi-intro">How did this invitation feel? A quick note helps make every celebration a little better.</p>
+          <div className={`gi-field ${errors.rating ? "has-error" : ""}`}>
+            <span className="gi-label">Rating<span className="gi-req">*</span>{rating > 0 && <em className="gi-label-note">{rating}/5</em>}</span>
+            <StarRating value={rating} onChange={(n) => { setRating(n); setErrors({ ...errors, rating: undefined }); }} />
+            <div className="gi-scale"><span>Poor</span><span>Excellent</span></div>
+            {errors.rating && <p className="gi-error-text">{errors.rating}</p>}
+          </div>
+          <Field label="Phone number" required icon={<Phone size={18} />} htmlFor="fb-phone" error={errors.phone}>
+            <GiInput id="fb-phone" type="tel" inputMode="tel" value={phone} onChange={(e) => { setPhone(e.target.value.replace(/\D/g, "").slice(0, 10)); setErrors({ ...errors, phone: undefined }); }} placeholder="078 000 0000" autoComplete="tel" />
+          </Field>
+          <Field label="Your message" required icon={<MessageSquare size={18} />} htmlFor="fb-message" error={errors.message} hint={`${message.length}/500`}>
+            <GiTextarea id="fb-message" value={message} onChange={(e) => { setMessage(e.target.value.slice(0, 500)); setErrors({ ...errors, message: undefined }); }} rows={3} placeholder="Tell us what you loved, or what we could do better" />
+          </Field>
+        </div>
+      )}
+      {step === "preview" && (
+        <div className="gi-form">
+          <div className="gi-summary">
+            <div className="gi-summary-row"><span>From</span><strong>{phone}</strong></div>
+            <div className="gi-summary-row"><span>Rating</span><span className="gi-summary-stars"><strong>{rating}/5</strong><StarRating value={rating} readOnly size={14} /></span></div>
+            <div className="gi-summary-block"><span>Message</span><p>“{message.trim()}”</p></div>
+          </div>
+        </div>
+      )}
+      {step === "done" && (
+        <div className="gi-result"><span className="gi-result-icon is-success"><CheckCircle2 size={34} /></span><strong>Thank you!</strong><p>Your note has been received. We read every message and use it to improve.</p></div>
+      )}
+      {step === "failed" && (
+        <div className="gi-result"><span className="gi-result-icon is-error"><AlertCircle size={34} /></span><strong>Your feedback was not sent</strong><p>{failure}</p></div>
+      )}
+    </GiModal>
+  );
+}
+
 function PublicInvite({ inviteId }: { inviteId: string }) {
   const templates = useTemplates(true);
   const isDemo = inviteId === "demo" || inviteId.startsWith("demo-");
@@ -415,16 +599,10 @@ function PublicInvite({ inviteId }: { inviteId: string }) {
   const remote = trpc.campaigns.get.useQuery({ id: campaignIdFromInvite(inviteId) }, { enabled: !local && !isDemo, retry: false, staleTime: 5 * 60_000 });
   const campaign: Campaign | undefined = isDemo ? DEMO_CAMPAIGN : local ?? (remote.data as Campaign | undefined);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
-  const [phone, setPhone] = useState("");
-  const [validated, setValidated] = useState(false);
-  const [rating, setRating] = useState(0);
-  const [message, setMessage] = useState("");
-  const validatePhone = () => { if (!isValidRwandaMobile(phone)) { toast.error("Enter a valid Rwanda mobile number", { description: "Use 10 digits starting with 072, 073, 078 or 079." }); setValidated(false); return; } setValidated(true); toast.success("Phone number validated"); };
-  const submitFeedback = () => { if (!validated || rating === 0 || !message.trim()) { toast.error("Complete your rating, message and phone validation first"); return; } saveLocal("gradinvite-feedback", [{ rating, message, phone, invitationId: inviteId, createdAt: new Date().toISOString() }, ...getLocal("gradinvite-feedback", [])]); toast.success("Thank you for sharing your feedback"); setFeedbackOpen(false); };
   if (!campaign) return remote.isLoading ? <div className="empty-screen"><Sparkles size={25} /><h2>Opening your invitation</h2></div> : <EmptyState title="This invitation link is not valid or has been removed." action={() => window.location.assign("/")} />;
   const guest = campaign.invitees.find((item) => inviteId === `${campaign.id}-${item.id}`) || campaign.invitees[0];
   const template = templates.find((item) => item.id === campaign.templateId) || templates[0];
-  return <div className={`public-invite ${template.className}`}><div className="invite-topbar"><Link href="/" className="brand-lockup"><span className="brand-mark"><Sparkles size={14} /></span><span>grad<span>invite</span></span></Link><div className="invite-topbar-actions"><LetterActions campaign={campaign} guest={guest} template={template} variant="bar" /><button onClick={() => setFeedbackOpen(true)} className="feedback-trigger"><MessageCircle size={15} /> Leave feedback</button></div></div><main className="invite-main invite-letter-wrap"><InviteLetter campaign={campaign} guest={guest} /><p className="letter-brand">Sent with GradInvite</p></main>{feedbackOpen && <div className="modal-backdrop" onClick={() => setFeedbackOpen(false)}><div className="feedback-modal" onClick={(e) => e.stopPropagation()}><button className="modal-close" onClick={() => setFeedbackOpen(false)}><X size={18} /></button><Badge className="eyebrow">A QUICK NOTE</Badge><h2>How did this invitation feel?</h2><p>Your feedback helps us make every celebration a little better.</p><div className="stars">{[1,2,3,4,5].map((n) => <button key={n} className={rating >= n ? "star-active" : ""} onClick={() => setRating(n)}><Star size={24} fill="currentColor" /></button>)}</div><label>Phone number</label><div className="validate-row"><Input value={phone} onChange={(e) => { setPhone(e.target.value.replace(/\D/g, "").slice(0, 10)); setValidated(false); }} placeholder="079 000 0000" /><Button variant="outline" onClick={validatePhone}>{validated ? <Check size={15} /> : "Validate"}</Button></div><label>Your message</label><Textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={4} placeholder="Tell us what you loved…" /><Button className="primary-button full-button" onClick={submitFeedback}>Send feedback <Send size={15} /></Button></div></div>}</div>;
+  return <div className={`public-invite ${template.className}`}><div className="invite-topbar"><Link href="/" className="brand-lockup"><span className="brand-mark"><Sparkles size={14} /></span><span>grad<span>invite</span></span></Link><div className="invite-topbar-actions"><LetterActions campaign={campaign} guest={guest} template={template} variant="bar" /><button onClick={() => setFeedbackOpen(true)} className="feedback-trigger"><MessageCircle size={15} /> Leave feedback</button></div></div><main className="invite-main invite-letter-wrap"><InviteLetter campaign={campaign} guest={guest} /><p className="letter-brand">Sent with Graduant-ntuma.invite</p></main>{feedbackOpen && <FeedbackModal inviteId={inviteId} onClose={() => setFeedbackOpen(false)} />}</div>;
 }
 
 function ViewCreations() {
@@ -446,10 +624,30 @@ function ViewCreations() {
   const verifyMutation = trpc.otp.verify.useMutation({ onSuccess: (r) => { playSound("confirm"); unlock((r as { accessToken?: string }).accessToken); }, onError: (e) => { playSound("error"); setError(e.message); } });
   const request = () => { if (!email.includes("@")) { playSound("error"); setError("Enter the email you used to create your invitations."); return; } setError(""); requestMutation.mutate({ email, purpose: "view" }); };
   const verify = () => { if (otp.length !== 6) { playSound("error"); setError("Enter the 6-digit code from your email."); return; } setError(""); verifyMutation.mutate({ email, code: otp }); };
+  const busy = requestMutation.isPending || verifyMutation.isPending;
   const guestCount = campaigns.reduce((n, c) => n + c.invitees.length, 0);
   const baseUrl = `${window.location.origin}/invite`;
   return <div className="simple-page"><header className="minimal-nav"><Link href="/" className="brand-lockup"><span className="brand-mark"><Sparkles size={15} /></span><span>grad<span>invite</span></span></Link><button className="back-button" onClick={() => navigate("/")}><ChevronLeft size={16} /> Home</button></header><main className="view-main"><div className="view-heading"><Badge className="eyebrow">YOUR SPACE</Badge><h1>Welcome back<br /><em>to your creations.</em></h1><p>{unlocked ? "Every invitation you sent, with each guest, their phone number and their private link." : "Enter the email you used before. We’ll send a one-time code so you can pick up where you left off."}</p></div>
-    {!unlocked ? <div className="view-auth"><Mail size={21} /><label>Email address</label><Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" type="email" />{!sent ? <Button className="primary-button full-button" onClick={request} disabled={requestMutation.isPending}>{requestMutation.isPending ? "Sending" : "Send me a code"} <ArrowRight size={16} /></Button> : <><div className="otp-sent"><Check size={15} /> Code sent to {email}</div><Input value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="6-digit code" inputMode="numeric" autoFocus /><Button className="primary-button full-button" onClick={verify} disabled={verifyMutation.isPending}>{verifyMutation.isPending ? "Checking" : "View my creations"} <ArrowRight size={16} /></Button></>}{error && <div className="form-error">{error}</div>}</div>
+    {!unlocked ? (
+      <form className="view-auth gi-card" onSubmit={(e) => { e.preventDefault(); if (sent) verify(); else request(); }}>
+        <div className="auth-icon"><Mail size={22} /></div>
+        <div className="gi-form">
+          <Field label="Email address" required icon={<Mail size={18} />} htmlFor="view-email" error={!sent && error ? error : undefined}>
+            <GiInput id="view-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" disabled={sent} />
+          </Field>
+          {!sent ? <button type="submit" className="gi-btn-primary" disabled={busy}>{requestMutation.isPending ? <><Spinner /> Sending</> : <>Send me a code <ArrowRight size={16} /></>}</button> : (
+            <>
+              <FormNotice kind="success"><Check size={15} /> Code sent to {email}</FormNotice>
+              <Field label="Enter your code" required icon={<KeyRound size={18} />} htmlFor="view-code" error={error || undefined} hint="6 digits, from the email we just sent.">
+                <GiInput id="view-code" className="gi-code" value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="000000" inputMode="numeric" autoComplete="one-time-code" maxLength={6} autoFocus />
+              </Field>
+              <button type="submit" className="gi-btn-primary" disabled={busy}>{verifyMutation.isPending ? <><Spinner /> Checking</> : <>View my creations <ArrowRight size={16} /></>}</button>
+              <div className="gi-links"><button type="button" className="gi-link" onClick={request} disabled={busy}>Resend code</button><button type="button" className="gi-link" onClick={() => { setSent(false); setOtp(""); setError(""); }}>Use a different email</button></div>
+            </>
+          )}
+        </div>
+      </form>
+    )
     : mine.isLoading ? <div className="empty-screen" style={{ minHeight: 200 }}><Sparkles size={25} /><h2>Loading your invitations</h2></div>
     : <div className="my-campaigns"><div className="campaigns-top"><strong>{campaigns.length} invitation{campaigns.length === 1 ? "" : "s"} · {guestCount} guest{guestCount === 1 ? "" : "s"}</strong><div className="campaigns-actions"><Button className="primary-button" onClick={() => downloadGuestList(campaigns)} disabled={guestCount === 0}><Download size={15} /> Download list</Button><Button className="primary-button" onClick={() => navigate("/create")}>New invitation <ArrowRight size={15} /></Button></div></div>{email && <p className="form-intro" style={{ marginTop: 12 }}>Signed in as {email}. <button type="button" className="resend-button" style={{ display: "inline", margin: 0 }} onClick={switchEmail}>Use a different email</button></p>}
       {mine.error && <div className="form-error">{mine.error.message} Showing what is saved on this device.</div>}
@@ -479,7 +677,7 @@ export default function Home() {
   const [matchLogin] = useRoute("/login");
   const [location, navigate] = useLocation();
   const initialTemplate = new URLSearchParams(window.location.search).get("template") || undefined;
-  useEffect(() => { document.title = location.startsWith("/invite") ? "You’re invited · GradInvite" : "GradInvite Graduation invitations, made personal"; }, [location]);
+  useEffect(() => { document.title = location.startsWith("/invite") ? "You’re invited · GradInvite" : "Graduant-ntuma.invite Graduation invitations, made personal"; }, [location]);
   if (matchInvite && paramsInvite?.id) return <PublicInvite inviteId={paramsInvite.id} />;
   if (matchCreated && paramsCreated?.id) return <CreatedPage campaignId={paramsCreated.id} />;
   if (matchLogin) return <Login />;

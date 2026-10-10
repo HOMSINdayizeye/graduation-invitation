@@ -4,6 +4,7 @@ import { getEmailCredits, isMailConfigured, mailTransportName } from "./_core/ma
 import { adminProcedure, router } from "./_core/trpc.js";
 import { isDbConnected } from "./db.js";
 import { Campaign } from "./models/campaign.js";
+import { Feedback } from "./models/feedback.js";
 import { OtpRequest } from "./models/otpRequest.js";
 import { getSettings } from "./models/setting.js";
 import { Template } from "./models/template.js";
@@ -24,15 +25,19 @@ export const adminRouter = router({
 
   stats: adminProcedure.query(async () => {
     requireDb();
-    const [users, templatesActive, byStatus, distinctEmails] = await Promise.all([
+    const [users, templatesActive, byStatus, distinctEmails, feedbackRows, feedbackByStatus] = await Promise.all([
       User.countDocuments(),
       Template.countDocuments({ active: true }),
       OtpRequest.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }]),
       OtpRequest.distinct("email"),
+      Feedback.countDocuments(),
+      Feedback.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }]),
     ]);
     const counts = { sent: 0, verified: 0, bypassed: 0, failed: 0 };
     for (const row of byStatus) counts[row._id] = row.count;
-    return { users, templatesActive, otp: counts, otpTotal: Object.values(counts).reduce((a, b) => a + b, 0), distinctEmails: distinctEmails.length, mailConfigured: isMailConfigured() };
+    const fbCounts = { new: 0, reviewed: 0, resolved: 0, rejected: 0 };
+    for (const row of feedbackByStatus) fbCounts[row._id] = row.count;
+    return { users, templatesActive, otp: counts, otpTotal: Object.values(counts).reduce((a, b) => a + b, 0), distinctEmails: distinctEmails.length, mailConfigured: isMailConfigured(), feedbackTotal: feedbackRows, feedback: fbCounts };
   }),
 
   users: adminProcedure.query(async () => {
@@ -94,5 +99,33 @@ export const adminRouter = router({
     } catch (error) {
       return { configured: isMailConfigured(), transport: mailTransportName(), credits: null, plan: null, account: null, error: String(error?.message ?? error) };
     }
+  }),
+
+  // Every piece of feedback left on a public invitation, newest first.
+  feedback: adminProcedure.input(z.object({ limit: z.number().int().min(1).max(500).default(200) }).optional()).query(async ({ input }) => {
+    requireDb();
+    const docs = await Feedback.find().sort({ created_at: -1 }).limit(input?.limit ?? 200);
+    return docs.map((doc) => doc.toPublic());
+  }),
+
+  // Admin can mark feedback as reviewed, resolved or rejected, and leave a private note.
+  updateFeedback: adminProcedure
+    .input(z.object({ id: z.string().min(1), status: z.enum(["new", "reviewed", "resolved", "rejected"]).optional(), adminNote: z.string().trim().max(1000).optional() }))
+    .mutation(async ({ input }) => {
+      requireDb();
+      const doc = await Feedback.findById(input.id);
+      if (!doc) throw new TRPCError({ code: "NOT_FOUND", message: "Feedback not found." });
+      if (input.status !== undefined) doc.status = input.status;
+      if (input.adminNote !== undefined) doc.adminNote = input.adminNote;
+      await doc.save();
+      return doc.toPublic();
+    }),
+
+  // Remove a feedback row (correction / deletion requested by the admin).
+  deleteFeedback: adminProcedure.input(z.object({ id: z.string().min(1) })).mutation(async ({ input }) => {
+    requireDb();
+    const doc = await Feedback.findByIdAndDelete(input.id);
+    if (!doc) throw new TRPCError({ code: "NOT_FOUND", message: "Feedback not found." });
+    return { success: true };
   }),
 });

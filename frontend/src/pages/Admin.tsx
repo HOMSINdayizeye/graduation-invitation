@@ -1,14 +1,15 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { ArrowRight, Check, ExternalLink, Gift, KeyRound, LockKeyhole, LogOut, Mail, FileSpreadsheet, FileText, Link2, Settings, Sparkles, Users } from "lucide-react";
+import { ArrowRight, Check, ExternalLink, Gift, KeyRound, LockKeyhole, LogOut, Mail, FileSpreadsheet, FileText, Link2, MessageCircle, Settings, Sparkles, Users } from "lucide-react";
 import { toast } from "@/lib/toast";
 import { copyText, downloadExcel, guestRows, printGuestPdf, type GuestRow } from "@/lib/share";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 
-type Tab = "overview" | "templates" | "users" | "invitations" | "otp" | "settings";
+type Tab = "overview" | "templates" | "users" | "invitations" | "otp" | "feedback" | "settings";
 
 type TemplateItem = {
   id: string;
@@ -259,6 +260,55 @@ function OtpPanel() {
   );
 }
 
+function FeedbackPanel() {
+  const utils = trpc.useUtils();
+  const query = trpc.admin.feedback.useQuery({ limit: 500 }, { retry: false });
+  const update = trpc.admin.updateFeedback.useMutation({
+    onSuccess: () => { utils.admin.feedback.invalidate(); toast.success("Feedback updated"); },
+    onError: (e) => toast.error(e.message),
+  });
+  const remove = trpc.admin.deleteFeedback.useMutation({
+    onSuccess: () => { utils.admin.feedback.invalidate(); toast.success("Feedback removed"); },
+    onError: (e) => toast.error(e.message),
+  });
+  const rows = (query.data ?? []) as { id: string; invitationId: string; rating: number; message: string; phone: string; email: string; status: string; adminNote: string; createdAt: string }[];
+  const [note, setNote] = useState<Record<string, string>>({});
+  return (
+    <section className="admin-card">
+      <div className="admin-card-head"><div><span className="card-eyebrow">VISITOR NOTES</span><h2>Every piece of feedback</h2></div><span className="card-eyebrow">{rows.length} RESPONSES</span></div>
+      {query.error && <p className="muted">{query.error.message}</p>}
+      <table className="admin-table">
+        <thead><tr><th>WHEN</th><th>RATING</th><th>INVITATION</th><th>PHONE</th><th>MESSAGE</th><th>STATUS</th><th>ACTION</th></tr></thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.id}>
+              <td>{formatWhen(r.createdAt)}</td>
+              <td><strong>{r.rating}/5</strong></td>
+              <td style={{ maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} className="muted">{r.invitationId}</td>
+              <td>{r.phone || "—"}</td>
+              <td style={{ maxWidth: "260px" }}><div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.message}>{r.message}</div></td>
+              <td>
+                <select value={r.status} onChange={(e) => update.mutate({ id: r.id, status: e.target.value as any })} className="border border-gray-300 rounded px-2 py-1 text-xs bg-white">
+                  <option value="new">New</option>
+                  <option value="reviewed">Reviewed</option>
+                  <option value="resolved">Resolved</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+              </td>
+              <td style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                <Input placeholder="Admin note" value={note[r.id] ?? r.adminNote ?? ""} onChange={(e) => setNote((n) => ({ ...n, [r.id]: e.target.value }))} style={{ width: "140px" }} />
+                <Button size="sm" variant="outline" onClick={() => update.mutate({ id: r.id, adminNote: note[r.id] ?? r.adminNote ?? "" })}>Save</Button>
+                <button className="small-link" style={{ color: "#a14635" }} onClick={() => remove.mutate({ id: r.id })}>Delete</button>
+              </td>
+            </tr>
+          ))}
+          {rows.length === 0 && !query.isLoading && <tr><td colSpan={7} className="muted">No feedback has been submitted yet.</td></tr>}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
 function Overview({ onGo }: { onGo: (tab: Tab) => void }) {
   const stats = trpc.admin.stats.useQuery(undefined, { retry: false });
   const latest = trpc.admin.otpRequests.useQuery({ limit: 6 }, { retry: false });
@@ -270,6 +320,7 @@ function Overview({ onGo }: { onGo: (tab: Tab) => void }) {
         <div className="metric-card"><span>Code requests</span><strong>{s?.otpTotal ?? "—"}</strong><small>{s ? `${s.otp.verified} verified · ${s.otp.bypassed} bypassed · ${s.otp.failed} failed` : ""}</small><div className="metric-accent terracotta" /></div>
         <div className="metric-card"><span>People reached</span><strong>{s?.distinctEmails ?? "—"}</strong><small>Distinct emails</small><div className="metric-accent gold" /></div>
         <div className="metric-card"><span>Templates live</span><strong>{s?.templatesActive ?? "—"}</strong><small>Visible to visitors</small><div className="metric-accent blue" /></div>
+        <div className="metric-card"><span>Feedback received</span><strong>{s?.feedbackTotal ?? "—"}</strong><small>{s ? `${s.feedback.new} new · ${s.feedback.reviewed} reviewed · ${s.feedback.resolved} resolved · ${s.feedback.rejected} rejected` : ""}</small><div className="metric-accent gold" /></div>
       </div>
       <div className="admin-grid">
         <EmailServiceCard />
@@ -279,6 +330,7 @@ function Overview({ onGo }: { onGo: (tab: Tab) => void }) {
             <button className="admin-shortcut" onClick={() => onGo("templates")}><Gift size={16} /><div><strong>Edit templates</strong><span>Names, descriptions, colours, visibility</span></div><ArrowRight size={15} /></button>
             <button className="admin-shortcut" onClick={() => onGo("users")}><Users size={16} /><div><strong>View all users</strong><span>Accounts, roles and locked sign-ins</span></div><ArrowRight size={15} /></button>
             <button className="admin-shortcut" onClick={() => onGo("otp")}><KeyRound size={16} /><div><strong>Code requests</strong><span>Who used templates and received codes</span></div><ArrowRight size={15} /></button>
+            <button className="admin-shortcut" onClick={() => onGo("feedback")}><MessageCircle size={16} /><div><strong>Visitor feedback</strong><span>Read and correct every note left on an invitation</span></div><ArrowRight size={15} /></button>
             <button className="admin-shortcut" onClick={() => onGo("settings")}><Settings size={16} /><div><strong>Access settings</strong><span>Require codes, allow bypass when email is exhausted</span></div><ArrowRight size={15} /></button>
           </div>
         </section>
@@ -303,6 +355,7 @@ const TABS: { key: Tab; label: string; icon: ReactNode; title: string; intro: st
   { key: "users", label: "Users", icon: <Users size={16} />, title: "Users", intro: "Everyone with a sign-in account." },
   { key: "invitations", label: "Invitations", icon: <Mail size={16} />, title: "Invitations", intro: "Every guest list, grouped by the person who sent the invitations." },
   { key: "otp", label: "Code requests", icon: <KeyRound size={16} />, title: "Code requests", intro: "Emails that used the templates and received one-time codes." },
+  { key: "feedback", label: "Feedback", icon: <MessageCircle size={16} />, title: "Feedback", intro: "Every note left by a visitor on a public invitation." },
   { key: "settings", label: "Settings", icon: <Settings size={16} />, title: "Settings", intro: "Control one-time codes and email delivery." },
 ];
 
@@ -334,6 +387,7 @@ export default function Admin() {
         {tab === "users" && <UsersPanel />}
         {tab === "invitations" && <InvitationsPanel />}
         {tab === "otp" && <OtpPanel />}
+        {tab === "feedback" && <FeedbackPanel />}
         {tab === "settings" && <SettingsPanel />}
       </main>
     </div>
