@@ -176,7 +176,7 @@ function InvitationsPanel() {
   return (
     <>
       <section className="admin-card">
-        <div className="admin-card-head"><div><span className="card-eyebrow">ALL GUESTS</span><h2>{campaigns.length} invitation{campaigns.length === 1 ? "" : "s"} · {guestTotal} guest{guestTotal === 1 ? "" : "s"} · {groups.length} creator{groups.length === 1 ? "" : "s"}</h2></div><div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}><Button className="secondary-button" style={btn} onClick={() => exportExcel(groups.map((g) => ({ name: g.email, rows: g.rows })), `gradinvite-all-guests-${stamp}`)} disabled={query.isLoading}><FileSpreadsheet size={14} /> Excel, all groups</Button><Button className="secondary-button" style={btn} onClick={() => exportPdf("GradInvite guest list", groups.map((g) => ({ name: g.email, rows: g.rows })))} disabled={query.isLoading}><FileText size={14} /> PDF, all groups</Button></div></div>
+        <div className="admin-card-head"><div><span className="card-eyebrow">ALL GUESTS</span><h2>{campaigns.length} invitation{campaigns.length === 1 ? "" : "s"} · {guestTotal} guest{guestTotal === 1 ? "" : "s"} · {groups.length} creator{groups.length === 1 ? "" : "s"}</h2></div><div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}><Button className="secondary-button" style={btn} onClick={() => exportExcel(groups.map((g) => ({ name: g.email, rows: g.rows })), `gradinvite-all-guests-${stamp}`)} disabled={query.isLoading}><FileSpreadsheet size={14} /> Excel, all groups</Button><Button className="secondary-button" style={btn} onClick={() => exportPdf("Graduant-ntuma.invite guest list", groups.map((g) => ({ name: g.email, rows: g.rows })))} disabled={query.isLoading}><FileText size={14} /> PDF, all groups</Button></div></div>
         {query.error && <p className="muted">{query.error.message}</p>}
         {!query.isLoading && campaigns.length === 0 && <p className="muted">No invitations have been created yet.</p>}
       </section>
@@ -206,7 +206,7 @@ function OtpPanel() {
     const rows = requests.data ?? [];
     const peopleRows = people.data ?? [];
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8" />
-      <title>GradInvite Audit Report</title>
+      <title>Graduant-ntuma.invite Audit Report</title>
       <style>
         body { font-family: 'DM Sans', system-ui, sans-serif; color: #263334; margin: 32px; }
         h1 { font-family: 'Playfair Display', Georgia, serif; font-size: 28px; margin: 0 0 4px; }
@@ -217,7 +217,7 @@ function OtpPanel() {
         .status-sent { color: #c9a227; } .status-verified { color: #4e796d; } .status-bypassed { color: #8a9490; } .status-failed { color: #a14635; }
         @media print { body { margin: 0; } }
       </style></head><body>
-      <h1>GradInvite Audit Report</h1>
+      <h1>Graduant-ntuma.invite Audit Report</h1>
       <div class="sub">Generated ${new Date().toLocaleString("en-GB")} · ${rows.length} code requests · ${peopleRows.length} distinct emails</div>
       <h2 style="font-size:16px;margin:0 0 12px">People</h2>
       <table><thead><tr><th>Email</th><th>Last template</th><th>Codes requested</th><th>Verified</th><th>Last status</th><th>Last request</th></tr></thead>
@@ -371,7 +371,7 @@ export default function Admin() {
   return (
     <div className="admin-page">
       <aside className="admin-sidebar">
-        <Link href="/" className="brand-lockup"><span className="brand-mark"><Sparkles size={15} /></span><span>grad<span>invite</span></span></Link>
+        <Link href="/" className="brand-lockup"><span className="brand-mark"><Sparkles size={15} /></span><span>Graduant-ntuma<span>.invite</span></span></Link>
         <div className="admin-profile"><div className="admin-avatar">{firstName.charAt(0).toUpperCase()}</div><div><strong>{user?.name ?? "Admin"}</strong><span>{user?.email ?? "Administrator"}</span></div></div>
         <nav>{TABS.map((t) => <button key={t.key} className={tab === t.key ? "active" : ""} onClick={() => setTab(t.key)}>{t.icon} {t.label}</button>)}</nav>
         <button className="sidebar-bottom" onClick={() => navigate("/")}><ExternalLink size={15} /> View public site</button>

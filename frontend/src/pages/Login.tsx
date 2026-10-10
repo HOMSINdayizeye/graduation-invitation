@@ -62,7 +62,7 @@ export default function Login() {
       <div className="auth-page-center">
         <div className="auth-card">
           <div className="auth-card-top">
-            <Link href="/" className="brand-lockup"><span className="brand-mark"><Sparkles size={15} /></span><span>grad<span>invite</span></span></Link>
+            <Link href="/" className="brand-lockup"><span className="brand-mark"><Sparkles size={15} /></span><span>Graduant-ntuma<span>.invite</span></span></Link>
             <h1>{mode === "login" ? "Welcome back" : "Create your account"}</h1>
             <p>{mode === "login" ? "Please enter your credentials to continue." : "Your email and a password of at least 8 characters."}</p>
           </div>
@@ -93,7 +93,7 @@ export default function Login() {
           </div>
 
           <button type="button" className="back-button auth-back" onClick={() => navigate("/")}><ChevronLeft size={16} /> Back to home</button>
-          <p className="auth-foot">© {new Date().getFullYear()} GradInvite. All rights reserved.</p>
+          <p className="auth-foot">© {new Date().getFullYear()} Graduant-ntuma.invite. All rights reserved.</p>
         </div>
       </div>
     </div>
